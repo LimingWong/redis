@@ -246,7 +246,12 @@ listNode *listNext(listIter *iter)
  * The 'Dup' method set with listSetDupMethod() function is used
  * to copy the node value. Otherwise the same pointer value of
  * the original node is used as value of the copied node.
- *
+ *  
+ * 导致复制失败的情况：
+ * case1: list创建失败
+ * case2: orig的某个节点的value为空指针
+ * case3: 新复制的value无法添加到copy的tail上
+ * 
  * The original list both on success or error is never modified. */
 list *listDup(list *orig)
 {
@@ -254,8 +259,11 @@ list *listDup(list *orig)
     listIter iter;
     listNode *node;
 
+    //case 1
     if ((copy = listCreate()) == NULL)
         return NULL;
+
+    //三个函数共享
     copy->dup = orig->dup;
     copy->free = orig->free;
     copy->match = orig->match;
@@ -265,12 +273,15 @@ list *listDup(list *orig)
 
         if (copy->dup) {
             value = copy->dup(node->value);
+            //case2
             if (value == NULL) {
                 listRelease(copy);
                 return NULL;
             }
         } else
+            //如果orig的dup指针为NULL，则此时orig和copy指向同一个链表
             value = node->value;
+        //case3
         if (listAddNodeTail(copy, value) == NULL) {
             listRelease(copy);
             return NULL;
