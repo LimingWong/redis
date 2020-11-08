@@ -215,7 +215,8 @@ void listRewindTail(list *list, listIter *li) {
 /* Return the next element of an iterator.
  * It's valid to remove the currently returned element using
  * listDelNode(), but not to remove other elements.
- *
+ *  可以删除执行一次返回的节点，但是迭代器从此失效，也就不能用来进行迭代删除。
+ * 
  * The function returns a pointer to the next element of the list,
  * or NULL if there are no more elements, so the classical usage patter
  * is:
