@@ -311,6 +311,8 @@ static void _dictRehashStep(dict *d) {
 
 /* Add an element to the target hash table 
  * 添加一个元素到字典中，value是一个指针类型
+ * 并没有实现value是unsigned long, long, double 类型
+ * 可以模仿这个函数写。
  */
 int dictAdd(dict *d, void *key, void *val)
 {
@@ -322,6 +324,8 @@ int dictAdd(dict *d, void *key, void *val)
 }
 
 /* Low level add or find:
+ * 低层次添加或者查找：低层次添加是因为这个添加并不为value赋值；查找是因为如果有重复的key，
+ * 函数会把重复的entry的地址赋给existing指针中
  * This function adds the entry but instead of setting a value returns the
  * dictEntry structure to the user, that will make sure to fill the value
  * field as he wishes.
@@ -337,7 +341,7 @@ int dictAdd(dict *d, void *key, void *val)
  * 
  * Return values:
  *
- * 如果key已经存在返回NULL，如果existing不为NULL的话，则将该key对应的entry添加到existing数组中
+ * 如果key已经存在返回NULL，如果existing不为NULL的话，则将该key对应的entry指针赋给existing
  * 如果key不存在，则返回创建的entry，但是还没有初始化value
  * If key already exists NULL is returned, and "*existing" is populated
  * with the existing entry if existing is not NULL.
@@ -375,10 +379,13 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 }
 
 /* Add or Overwrite:
+ * 添加元素或者覆盖
  * Add an element, discarding the old value if the key already exists.
  * Return 1 if the key was added from scratch, 0 if there was already an
  * element with such key and dictReplace() just performed a value update
- * operation. */
+ * operation.
+ * 如果添加的是一个全新的key，返回1；如果key已经存在，对原来的key进行了更新，就返回0.
+ * 注意这个地方添加的值仍然为val指针，如果要添加别的类型的元素可以模仿这个实现 */
 int dictReplace(dict *d, void *key, void *val)
 {
     dictEntry *entry, *existing, auxentry;
@@ -396,6 +403,7 @@ int dictReplace(dict *d, void *key, void *val)
      * as the previous one. In this context, think to reference counting,
      * you want to increment (set), and then decrement (free), and not the
      * reverse. */
+    //existing指向重复的key对应的节点，如果完全相同会不会删除掉？？？
     auxentry = *existing;
     dictSetVal(d, existing, val);
     dictFreeVal(d, &auxentry);
