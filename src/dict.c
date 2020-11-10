@@ -313,6 +313,8 @@ static void _dictRehashStep(dict *d) {
  * 添加一个元素到字典中，value是一个指针类型
  * 并没有实现value是unsigned long, long, double 类型
  * 可以模仿这个函数写。
+ * 如果key已经存在，则返回DICT_ERR.
+ * key添加成功后，返回DICT_OK
  */
 int dictAdd(dict *d, void *key, void *val)
 {
@@ -404,6 +406,7 @@ int dictReplace(dict *d, void *key, void *val)
      * you want to increment (set), and then decrement (free), and not the
      * reverse. */
     //existing指向重复的key对应的节点，如果完全相同会不会删除掉？？？
+    //顺序很重要
     auxentry = *existing;
     dictSetVal(d, existing, val);
     dictFreeVal(d, &auxentry);
@@ -415,7 +418,7 @@ int dictReplace(dict *d, void *key, void *val)
  * returns the hash entry of the specified key, even if the key already
  * exists and can't be added (in that case the entry of the already
  * existing key is returned.)
- *
+ * 这个函数总会返回key对应的entry，如果没有这个key，就创建后返回；如果有就直接返回。
  * See dictAddRaw() for more information. */
 dictEntry *dictAddOrFind(dict *d, void *key) {
     dictEntry *entry, *existing;
@@ -425,46 +428,60 @@ dictEntry *dictAddOrFind(dict *d, void *key) {
 
 /* Search and remove an element. This is an helper function for
  * dictDelete() and dictUnlink(), please check the top comment
- * of those functions. */
+ * of those functions.
+ * nofree = 0时，表示要删除key对应key 、 val和entry的空间
+ * nofree = 1时，如果找到key对应的entry，不删除该entry，但是将used--，返回该entry
+ *  */
 static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
     uint64_t h, idx;
     dictEntry *he, *prevHe;
     int table;
 
+    //表为空的情况
     if (d->ht[0].used == 0 && d->ht[1].used == 0) return NULL;
 
+    //表正在进行rehashing，条件允许就进行单步rehash。
     if (dictIsRehashing(d)) _dictRehashStep(d);
-    h = dictHashKey(d, key);
 
+    //计算key的哈希值
+    h = dictHashKey(d, key);
     for (table = 0; table <= 1; table++) {
         idx = h & d->ht[table].sizemask;
         he = d->ht[table].table[idx];
         prevHe = NULL;
         while(he) {
             if (key==he->key || dictCompareKeys(d, key, he->key)) {
-                /* Unlink the element from the list */
+                /* Unlink the element from the list
+                 * 找到entry之后将其unlink掉
+                 */
                 if (prevHe)
                     prevHe->next = he->next;
                 else
                     d->ht[table].table[idx] = he->next;
+                //判断是否要free掉key、val和entry所占用的空间
                 if (!nofree) {
                     dictFreeKey(d, he);
                     dictFreeVal(d, he);
                     zfree(he);
                 }
                 d->ht[table].used--;
+                //注意此时的he并不是NULL，但是它所指向的空间可能已经释放掉了
                 return he;
             }
             prevHe = he;
             he = he->next;
         }
+        //走到这，说明目前还没有找到，如果d正在进行rehashing，那么就再去ht[1]里面找，否则就直接跳出循环
         if (!dictIsRehashing(d)) break;
     }
     return NULL; /* not found */
 }
 
 /* Remove an element, returning DICT_OK on success or DICT_ERR if the
- * element was not found. */
+ * element was not found. 
+ * 删除字典ht中的key，如果删除成功返回DICT_OK，如果没有找到就返回DICT_ERR。
+ * 这个函数删除成功后后将key，val和entry的空间全部释放掉
+ * */
 int dictDelete(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
 }
@@ -489,13 +506,18 @@ int dictDelete(dict *ht, const void *key) {
  * entry = dictUnlink(dictionary,entry);
  * // Do something with entry
  * dictFreeUnlinkedEntry(entry); // <- This does not need to lookup again.
+ * 
+ * 如果找到key对应的entry，返回该entry，同时把对应的ht.used--；注意没有释放entry的空间。
+ * 如果没有找到返回NULL
  */
 dictEntry *dictUnlink(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,1);
 }
 
 /* You need to call this function to really free the entry after a call
- * to dictUnlink(). It's safe to call this function with 'he' = NULL. */
+ * to dictUnlink(). It's safe to call this function with 'he' = NULL.
+ * 实际释放dictUnlink()返回的entry的空间，包括key val 和entry
+ *  */
 void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
     if (he == NULL) return;
     dictFreeKey(d, he);
@@ -503,7 +525,9 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
     zfree(he);
 }
 
-/* Destroy an entire dictionary */
+/* Destroy an entire dictionary
+ * 删除字典d中ht哈希表
+ */
 int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     unsigned long i;
 
@@ -530,7 +554,9 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     return DICT_OK; /* never fails */
 }
 
-/* Clear & Release the hash table */
+/* Clear & Release the hash table
+ * 释放字典d所有空间
+ */
 void dictRelease(dict *d)
 {
     _dictClear(d,&d->ht[0],NULL);
@@ -544,6 +570,7 @@ dictEntry *dictFind(dict *d, const void *key)
     uint64_t h, idx, table;
 
     if (dictSize(d) == 0) return NULL; /* dict is empty */
+    //趁机进行单步rehash
     if (dictIsRehashing(d)) _dictRehashStep(d);
     h = dictHashKey(d, key);
     for (table = 0; table <= 1; table++) {
@@ -554,11 +581,14 @@ dictEntry *dictFind(dict *d, const void *key)
                 return he;
             he = he->next;
         }
+        //如果当前没有进行rehashing，就不用再查找ht[1]了，返回NULL
         if (!dictIsRehashing(d)) return NULL;
     }
+    //没找到
     return NULL;
 }
 
+//获取key对应的val，注意value可能是别的类型，v是个union
 void *dictFetchValue(dict *d, const void *key) {
     dictEntry *he;
 
@@ -1070,12 +1100,15 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
         /* Search if this slot does not already contain the given key */
         he = d->ht[table].table[idx];
         while(he) {
+            //查找是否有重复的key，如果有重复的key，把对应的entry给existing，返回-1
             if (key==he->key || dictCompareKeys(d, key, he->key)) {
                 if (existing) *existing = he;
                 return -1;
             }
             he = he->next;
         }
+        //如果正在进行rehasing，则进入下一次循环，保证idx是ht[1]的索引
+        //否则直接break，此时idx是ht[0]的索引
         if (!dictIsRehashing(d)) break;
     }
     return idx;
