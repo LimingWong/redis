@@ -80,14 +80,15 @@ typedef struct dict {
     void *privdata;
     dictht ht[2];
     long rehashidx; /* rehashing not in progress if rehashidx == -1 如果值为-1则没有进行rehashing，否则就在进行rehashing。 */
-    unsigned long iterators; /* number of iterators currently running 正在运行的迭代器的数量*/
+    unsigned long iterators; /* number of iterators currently running 正在运行的安全迭代器的数量*/
 } dict;
 
 /* If safe is set to 1 this is a safe iterator, that means, you can call
  * dictAdd, dictFind, and other functions against the dictionary even while
  * iterating. Otherwise it is a non safe iterator, and only dictNext()
  * should be called while iterating.
- * safe=1时，即使在迭代过程中也可以进行dictAdd,dictFind,和其他的一些字典操作；否则这个迭代器就不是安全的，
+ * safe=1时，即使在迭代过程中也可以进行dictAdd,dictFind,和其他的一些字典操作；
+ * 有安全迭代器的情况下不会进行rehashing操作；否则这个迭代器就不是安全的，
  * 在迭代时只能进行dictNext()函数操作 */
 typedef struct dictIterator {
     dict *d; //被迭代的字典
@@ -102,7 +103,7 @@ typedef struct dictIterator {
     //           所以需要一个额外的指针来保存下一个节点的位置，从而防止指针丢失
     dictEntry *entry, *nextEntry;
     /* unsafe iterator fingerprint for misuse detection. */
-    long long fingerprint;
+    long long fingerprint; //字典d的指纹，不安全的迭代器会计算其指向的字典的指纹用于滥用检测
 } dictIterator;
 
 //两个函数指针：TODO

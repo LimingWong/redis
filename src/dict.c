@@ -296,8 +296,6 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * no safe iterators bound to our hash table. When we have iterators in the
  * middle of a rehashing we can't mess with the two hash tables otherwise
  * some element can be missed or duplicated.
- * 这个函数只有在不存在安全迭代器的情况下对字典进行单步rehash
- * 在有安全迭代器且正在进行rehashing的情况下，不能弄乱两个表，否则会丢失数据或者重复数据
  * 
  * This function is called by common lookup or update operations in the
  * dictionary so that the hash table automatically migrates from H1 to H2
@@ -306,6 +304,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * 同时将rehash平摊到操作中，不会过长的阻塞某一个操作。
  * */
 static void _dictRehashStep(dict *d) {
+    //安全迭代器的数量为0，进行单步rehash
     if (d->iterators == 0) dictRehash(d,1);
 }
 
@@ -598,10 +597,16 @@ void *dictFetchValue(dict *d, const void *key) {
 
 /* A fingerprint is a 64 bit number that represents the state of the dictionary
  * at a given time, it's just a few dict properties xored together.
+ * 字典的指纹代表着字典在一个给定的时间的状态，是一个64位的数，是字典几个属性的叠加
+ * 
  * When an unsafe iterator is initialized, we get the dict fingerprint, and check
  * the fingerprint again when the iterator is released.
+ * 当一个不安全的迭代器初始化后，我们计算字典的指纹，并且在这个迭代器被释放后检查指纹
+ * 
  * If the two fingerprints are different it means that the user of the iterator
- * performed forbidden operations against the dictionary while iterating. */
+ * performed forbidden operations against the dictionary while iterating.
+ * 如果两个指纹是不同的，那么意味着迭代器的使用者在迭代的过程中执行了被禁止的操作
+ *  */
 long long dictFingerprint(dict *d) {
     long long integers[6], hash = 0;
     int j;
@@ -634,6 +639,8 @@ long long dictFingerprint(dict *d) {
     return hash;
 }
 
+//为字典d分配一个不安全的迭代器，并进行初始化
+//不安全的迭代器只能执行dictNext()操作，不可以修改字典
 dictIterator *dictGetIterator(dict *d)
 {
     dictIterator *iter = zmalloc(sizeof(*iter));
@@ -647,6 +654,7 @@ dictIterator *dictGetIterator(dict *d)
     return iter;
 }
 
+//为字典d分配一个安全的迭代器
 dictIterator *dictGetSafeIterator(dict *d) {
     dictIterator *i = dictGetIterator(d);
 
@@ -654,32 +662,50 @@ dictIterator *dictGetSafeIterator(dict *d) {
     return i;
 }
 
+
+//获取下一个非NULL的entry，如果已经遍历完了则返回NULL
 dictEntry *dictNext(dictIterator *iter)
 {
     while (1) {
+        //当前的entry是NULL
         if (iter->entry == NULL) {
             dictht *ht = &iter->d->ht[iter->table];
+
+            //这个迭代器是个新的
             if (iter->index == -1 && iter->table == 0) {
                 if (iter->safe)
+                    //迭代器是安全的就将字典d的迭代器数量加1
                     iter->d->iterators++;
                 else
+                    //不安全就计算d的指纹存储在迭代器中
                     iter->fingerprint = dictFingerprint(iter->d);
             }
+            //跳到下一个bucket里面
             iter->index++;
+
+            //index溢出
             if (iter->index >= (long) ht->size) {
+                //  case1:
+                //  如果字典d正在进行rehash并且当前迭代器指向ht[0]
+                //  就让它指向ht[1],index重设为0（从0到rehashidx已经存到ht[1]中了）
                 if (dictIsRehashing(iter->d) && iter->table == 0) {
                     iter->table++;
                     iter->index = 0;
                     ht = &iter->d->ht[1];
+                // case2: 非法，直接break跳出循环返回NULL
                 } else {
                     break;
                 }
             }
+            //iter->entry等于index bucket里面的第一个entry
             iter->entry = ht->table[iter->index];
         } else {
+            //当前的entry不是NULL，将nextEntry的值给entry
             iter->entry = iter->nextEntry;
         }
         if (iter->entry) {
+            // 如果上面获得的entry是有效的则在这里计算nextEntry,否则迭代器的使用者可能删除掉
+            // 返回的这个entry
             /* We need to save the 'next' here, the iterator user
              * may delete the entry we are returning. */
             iter->nextEntry = iter->entry->next;
@@ -692,6 +718,9 @@ dictEntry *dictNext(dictIterator *iter)
 void dictReleaseIterator(dictIterator *iter)
 {
     if (!(iter->index == -1 && iter->table == 0)) {
+        /* 如果用户已经使用过迭代器了，如果是个安全迭代器将字典的安全迭代器数量减1 */
+        /* 如果是个不安全的迭代器则要和最开始计算的字典指纹对比，如果发生变化则说明 */
+        /* 迭代器进行了非法操作，终止进程； */
         if (iter->safe)
             iter->d->iterators--;
         else
@@ -701,7 +730,9 @@ void dictReleaseIterator(dictIterator *iter)
 }
 
 /* Return a random entry from the hash table. Useful to
- * implement randomized algorithms */
+ * implement randomized algorithms
+ * 从字典中随机返回一个entry，在实现随机算法时有用
+ *  */
 dictEntry *dictGetRandomKey(dict *d)
 {
     dictEntry *he, *orighe;
@@ -858,7 +889,7 @@ dictEntry *dictGetFairRandomKey(dict *d) {
     return entries[idx];
 }
 
-/* Function to reverse bits. Algorithm from:
+/* Function to reverse bits. Algorithm from:反转bits的函数
  * http://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel */
 static unsigned long rev(unsigned long v) {
     unsigned long s = CHAR_BIT * sizeof(v); // bit size; must be power of 2
@@ -871,6 +902,7 @@ static unsigned long rev(unsigned long v) {
 }
 
 /* dictScan() is used to iterate over the elements of a dictionary.
+ * 这个函数用来迭代字典中的元素
  *
  * Iterating works the following way:
  *
@@ -879,10 +911,12 @@ static unsigned long rev(unsigned long v) {
  *    new cursor value you must use in the next call.
  * 3) When the returned cursor is 0, the iteration is complete.
  *
+ * 函数保证字典中所有的元素都会在迭代的过程中迭代到；但是有可能会得到多次，会重复
  * The function guarantees all elements present in the
  * dictionary get returned between the start and end of the iteration.
  * However it is possible some elements get returned multiple times.
  *
+ * 对于每个返回的元素，回调函数fn都会被调用，第一个参数是privdata，第二个参数是返回的元素de 
  * For every element returned, the callback argument 'fn' is
  * called with 'privdata' as first argument and the dictionary entry
  * 'de' as second argument.
@@ -953,6 +987,8 @@ static unsigned long rev(unsigned long v) {
  *    we are sure we don't miss keys moving during rehashing.
  * 3) The reverse cursor is somewhat hard to understand at first, but this
  *    comment is supposed to help.
+ * 
+ * 重点：单独写一篇博客
  */
 unsigned long dictScan(dict *d,
                        unsigned long v,
@@ -967,10 +1003,15 @@ unsigned long dictScan(dict *d,
     if (dictSize(d) == 0) return 0;
 
     /* Having a safe iterator means no rehashing can happen, see _dictRehashStep.
-     * This is needed in case the scan callback tries to do dictFind or alike. */
+     * This is needed in case the scan callback tries to do dictFind or alike. 
+     * 增加字典d的安全迭代器的数量可以防止rehashing，但实际上并没有这样的迭代器
+     * 执行这个函数之后就不允许新的rehashing了
+     * */
     d->iterators++;
 
     if (!dictIsRehashing(d)) {
+        //当前没有rehashing
+
         t0 = &(d->ht[0]);
         m0 = t0->sizemask;
 
@@ -993,6 +1034,8 @@ unsigned long dictScan(dict *d,
         v = rev(v);
 
     } else {
+        //当前在进行rehashing
+
         t0 = &d->ht[0];
         t1 = &d->ht[1];
 
