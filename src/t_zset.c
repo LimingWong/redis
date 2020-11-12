@@ -35,17 +35,24 @@
 /* ZSETs are ordered sets using two data structures to hold the same elements
  * in order to get O(log(N)) INSERT and REMOVE operations into a sorted
  * data structure.
+ * ZSETS是一种使用两种数据结构的有序集合（zskiplist和ziplist），这样设计的目的是为了使其插入和删除操作有O(log(N))的复杂度。
  *
  * The elements are added to a hash table mapping Redis objects to scores.
  * At the same time the elements are added to a skip list mapping scores
  * to Redis objects (so objects are sorted by scores in this "view").
- *
+ * 元素同时被添加到hash table和skiplist中，在hash table中key是redis objects，value是score；
+ * 在skiplist中，按照score作为权值进行排序；
+ * 
  * Note that the SDS string representing the element is the same in both
  * the hash table and skiplist in order to save memory. What we do in order
  * to manage the shared SDS string more easily is to free the SDS string
  * only in zslFreeNode(). The dictionary has no value free method set.
  * So we should always remove an element from the dictionary, and later from
  * the skiplist.
+ * 代表元素的sds string在hash table中和skiplist中是同一个对象，这样做是为了节省内存；
+ * 为了更容易的管理共享sds string，我们只在zslFreeNode()函数中释放sds string的内存；
+ * 因为字典没有直接删除value的方法（要通过key确定），value有可能重复；所以当从zset中删除元素的
+ * 时候，要先从字典中删除，再从skiplist中删除
  *
  * This skiplist implementation is almost a C translation of the original
  * algorithm described by William Pugh in "Skip Lists: A Probabilistic
@@ -54,7 +61,13 @@
  * b) the comparison is not just by key (our 'score') but by satellite data.
  * c) there is a back pointer, so it's a doubly linked list with the back
  * pointers being only at "level 1". This allows to traverse the list
- * from tail to head, useful for ZREVRANGE. */
+ * from tail to head, useful for ZREVRANGE.
+ * skiplist的实现几乎是William Pugh论文 "Skip Lists: A Probabilistic Alternative to Balanced Trees"
+ * 中skiplist的c语言移植，只在三个地方做了修改：
+ * 1、允许重复的score
+ * 2、比较操作不仅仅是key比较(我们称之为score)，还可以进行satellite data（经纬度）比较
+ * 3、添加了一个回溯指针，所以这像是一个双向链表。这样可以允许从尾部向头部遍历，对于ZREVRANGE命令很有用。
+ *  */
 
 #include "server.h"
 #include <math.h>
@@ -118,7 +131,10 @@ void zslFree(zskiplist *zsl) {
 /* Returns a random level for the new skiplist node we are going to create.
  * The return value of this function is between 1 and ZSKIPLIST_MAXLEVEL
  * (both inclusive), with a powerlaw-alike distribution where higher
- * levels are less likely to be returned. */
+ * levels are less likely to be returned.
+ * 为要创建的skiplistNode生成一个随机的层数；返回值在1到ZSKIPLIST_MAXLEVEL之间（前闭后闭）；
+ * 按照幂次定律进行分配，越高的层数返回的几率越小。
+ *  */
 int zslRandomLevel(void) {
     int level = 1;
     while ((random()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
