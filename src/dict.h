@@ -72,7 +72,7 @@ typedef struct dictht {
     dictEntry **table;
     unsigned long size; //记录table数组的大小
     unsigned long sizemask;//用来计算索引值
-    unsigned long used;//记录有多少个键值对  哈希表的复杂因子 = used / size.
+    unsigned long used;//记录有多少个键值对  哈希表的负载因子 = used / size.
 } dictht;
 
 typedef struct dict {

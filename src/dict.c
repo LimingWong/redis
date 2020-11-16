@@ -134,9 +134,7 @@ int _dictInit(dict *d, dictType *type,
 
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1
- * 
- * 当允许rehash（dict_can_resize=1）且当前没有rehashing时，对字典d进行扩展，也就是
- * 创建ht[1]，使负载因子接近1。即让used和size比较接近；是进行rehashing前的准备工作。
+ * 缩小哈希表的大小到最小，但是包含所有的元素，同时保证负载因子近似小于等于1.
  * T = O(N)
  *  */
 int dictResize(dict *d)

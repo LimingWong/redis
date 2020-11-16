@@ -59,6 +59,8 @@
 
 #include <pthread.h>
 
+//TODO:了解这三种实现方式，做一个比较，写博客
+
 #ifndef __ATOMIC_VAR_H
 #define __ATOMIC_VAR_H
 
