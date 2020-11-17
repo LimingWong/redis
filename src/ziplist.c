@@ -5,27 +5,34 @@
  * in O(1) time. However, because every operation requires a reallocation of
  * the memory used by the ziplist, the actual complexity is related to the
  * amount of memory used by the ziplist.
- *
+ * ziplist是一种特殊编码的双向链表，设计的非常内存搞笑。它可以存储字符串和整数，其中整数被编码为真的
+ * 整型数而不是字符串。它支持在双端进行时间复杂度为O(1)的push和pop操作。然而，由于每个操作需要对ziplist
+ * 使用的内存进行重分配，实际的复杂度与ziplist使用的内存数量有关系。
  * ----------------------------------------------------------------------------
  *
  * ZIPLIST OVERALL LAYOUT
  * ======================
  *
  * The general layout of the ziplist is as follows:
+ * ziplist的内存结构如下：
  *
  * <zlbytes> <zltail> <zllen> <entry> <entry> ... <entry> <zlend>
  *
  * NOTE: all fields are stored in little endian, if not specified otherwise.
+ * 注意：如果没有特殊说明，所有的项都以小端方式存储。
  *
  * <uint32_t zlbytes> is an unsigned integer to hold the number of bytes that
  * the ziplist occupies, including the four bytes of the zlbytes field itself.
  * This value needs to be stored to be able to resize the entire structure
  * without the need to traverse it first.
+ * <uint32_t zlbytes>存储整个ziplist所占用的内存大小（字节为单位），包括它自己占用的空间。
+ * 这个值用来改变整个entry结构的大小而不用先遍历。
  *
  * <uint32_t zltail> is the offset to the last entry in the list. This allows
  * a pop operation on the far side of the list without the need for full
  * traversal.
- *
+ * <uint32_t zltail> 是最后一个entry相对于起始位置的偏移量（字节为单位）。
+ * 
  * <uint16_t zllen> is the number of entries. When there are more than
  * 2^16-2 entries, this value is set to 2^16-1 and we need to traverse the
  * entire list to know how many items it holds.
