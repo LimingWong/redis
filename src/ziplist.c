@@ -294,6 +294,8 @@
  * end of ziplist FF entry. */
 #define ZIPLIST_ENTRY_END(zl)   ((zl)+intrev32ifbe(ZIPLIST_BYTES(zl))-1)
 
+/* 增加在头中记录ziplist　entry数量的项；这个函数不可以溢出，因此每次都是加１．如果
+ * 如果增长到UINT16_MAX了，那么就意味着需要一次遍历来确定实际的长度 */
 /* Increment the number of items field in the ziplist header. Note that this
  * macro should never overflow the unsigned 16 bit integer, since entries are
  * always pushed one at a time. When UINT16_MAX is reached we want the count
@@ -308,25 +310,26 @@
  * Note that this is not how the data is actually encoded, is just what we
  * get filled by a function in order to operate more easily. */
 typedef struct zlentry {
-    unsigned int prevrawlensize; /* Bytes used to encode the previous entry len*/
-    unsigned int prevrawlen;     /* Previous entry len. */
-    unsigned int lensize;        /* Bytes used to encode this entry type/len.
-                                    For example strings have a 1, 2 or 5 bytes
+    unsigned int prevrawlensize; /* Bytes used to encode the previous entry len　为了标识前一个entry的大小，占用了此entry几个字节*/
+    unsigned int prevrawlen;     /* Previous entry len. 前一个entry有几个字节．*/
+    unsigned int lensize;        /* Bytes used to encode this entry type/len.　为了标识这个entry的类型/大小，用了几个字节
+                                    For example strings have a 1, 2 or 5 bytes　字符串可能用１，２，５字节；整数总是用１个字节
                                     header. Integers always use a single byte.*/
-    unsigned int len;            /* Bytes used to represent the actual entry.
+    unsigned int len;            /* Bytes used to represent the actual entry.　数据项占用了多少个字节
                                     For strings this is just the string length
                                     while for integers it is 1, 2, 3, 4, 8 or
                                     0 (for 4 bit immediate) depending on the
                                     number range. */
-    unsigned int headersize;     /* prevrawlensize + lensize. */
+    unsigned int headersize;     /* prevrawlensize + lensize. 除了数据项之外，这个entry其他部分占用了多少个字节,也就是prevrawlensize + lensize*/
     unsigned char encoding;      /* Set to ZIP_STR_* or ZIP_INT_* depending on
-                                    the entry encoding. However for 4 bits
+                                    the entry encoding. However for 4 bits   当前entry的编码
                                     immediate integers this can assume a range
                                     of values and must be range-checked. */
-    unsigned char *p;            /* Pointer to the very start of the entry, that
+    unsigned char *p;            /* Pointer to the very start of the entry, that　p指向当前entry的头地址
                                     is, this points to prev-entry-len field. */
 } zlentry;
 
+/* 初始化一个entry */
 #define ZIPLIST_ENTRY_ZERO(zle) { \
     (zle)->prevrawlensize = (zle)->prevrawlen = 0; \
     (zle)->lensize = (zle)->len = (zle)->headersize = 0; \
@@ -334,6 +337,7 @@ typedef struct zlentry {
     (zle)->p = NULL; \
 }
 
+/* 将ptr指针指向的编码赋值给encoding */
 /* Extract the encoding from the byte pointed by 'ptr' and set it into
  * 'encoding' field of the zlentry structure. */
 #define ZIP_ENTRY_ENCODING(ptr, encoding) do {  \
@@ -341,6 +345,7 @@ typedef struct zlentry {
     if ((encoding) < ZIP_STR_MASK) (encoding) &= ZIP_STR_MASK; \
 } while(0)
 
+/* encoding为一种整数编码，返回需要炸用的字节数；如果是一个４bit的立即数，那么返回０ */
 /* Return bytes needed to store integer encoded by 'encoding'. */
 unsigned int zipIntSize(unsigned char encoding) {
     switch(encoding) {
