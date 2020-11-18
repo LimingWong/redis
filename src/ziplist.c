@@ -122,8 +122,8 @@
  * |11111110| - 2 bytes
  * 编码一个8bits整型数
  *      Integer encoded as 8 bit signed (1 byte).
- * |1111xxxx| - (with xxxx between 0000 and 1101) immediate 4 bit integer.
- * 后面4位编码0-12这13个数，注意实际的表示应该用后四位jian
+ * |1111xxxx| - (with xxxx between 0000 and 1101:0-13) immediate 4 bit integer.
+ * 后面4位编码0-12这13个数，0000不可用，所有只有0001-1101可用，注意实际的表示应该用后４位减１正好表示0-12
  *      Unsigned integer from 0 to 12. The encoded value is actually from
  *      1 to 13 because 0000 and 1111 can not be used, so 1 should be
  *      subtracted from the encoded 4 bit value to obtain the right value.
@@ -215,6 +215,7 @@
 #include "endianconv.h"
 #include "redisassert.h"
 
+/* －－－－－－－－－－－－－－－－－－ziplist prevlen的宏------------------------------------- */
 #define ZIP_END 255         /* Special "end of ziplist" entry. */
 #define ZIP_BIG_PREVLEN 254 /* Max number of bytes of the previous entry, for
                                the "prevlen" field prefixing each entry, to be
@@ -223,60 +224,72 @@
                                AA BB CC DD are a 4 bytes unsigned integer
                                representing the previous entry len. */
 
-/* Different encoding/length possibilities */
+/* -------------------------------编码的宏-------------------------------------------------------- */
+
 /* 不同的编码/长度可能 */
+/* Different encoding/length possibilities */
 #define ZIP_STR_MASK 0xc0
 #define ZIP_INT_MASK 0x30
-#define ZIP_STR_06B (0 << 6)  //1 byte包括表示长度（6位）和字符串（2位），不包含数据
-#define ZIP_STR_14B (1 << 6)  //2 bytes包括表示长度（14位）和字符串（2位），不包含数据
-#define ZIP_STR_32B (2 << 6)  //5 bytes包括表示长度（32位）和字符串（1个字节），不包含数据
-#define ZIP_INT_16B (0xc0 | 0<<4) //1 byte头，2byte数据
-#define ZIP_INT_32B (0xc0 | 1<<4) //1byte头，4byte数据
-#define ZIP_INT_64B (0xc0 | 2<<4) //1byte头，8byte数据
-#define ZIP_INT_24B (0xc0 | 3<<4) //1byte头，3byte数据
-#define ZIP_INT_8B 0xfe           //1byte头，1byte数据
+#define ZIP_STR_06B (0 << 6)  //1 byte包括表示长度（6位）和字符串（2位00），不包含数据
+#define ZIP_STR_14B (1 << 6)  //2 bytes包括表示长度（14位）和字符串（2位01），不包含数据
+#define ZIP_STR_32B (2 << 6)  //5 bytes包括表示长度（32位）和字符串（1个字节1000 0000），不包含数据
+#define ZIP_INT_16B (0xc0 | 0<<4) //1 byte(1100 0000)头，2byte数据
+#define ZIP_INT_32B (0xc0 | 1<<4) //1 byte(1101 0000)头，4byte数据
+#define ZIP_INT_64B (0xc0 | 2<<4) //1 byte(1110 0000)头，8byte数据
+#define ZIP_INT_24B (0xc0 | 3<<4) //1 byte(1111 0000)头，3byte数据
+#define ZIP_INT_8B 0xfe           //1 byte(1111 1110)头，1byte数据
 
 /* 4 bit integer immediate encoding |1111xxxx| with xxxx between
  * 0001 and 1101. */
 #define ZIP_INT_IMM_MASK 0x0f   /* Mask to extract the 4 bits value. To add
                                    one is needed to reconstruct the value. */
-#define ZIP_INT_IMM_MIN 0xf1    /* 11110001 */
-#define ZIP_INT_IMM_MAX 0xfd    /* 11111101 */
+#define ZIP_INT_IMM_MIN 0xf1    /* 11110001 4 bit立即数中最小的*/
+#define ZIP_INT_IMM_MAX 0xfd    /* 11111101 ４bit立即数中最大的*/
 
-#define INT24_MAX 0x7fffff
-#define INT24_MIN (-INT24_MAX - 1)
+#define INT24_MAX 0x7fffff      /* ３bytes, 24位　表示的最大正整数 */
+#define INT24_MIN (-INT24_MAX - 1)    /* ３bytes, 24位 表示的最小负整数*/
 
+
+/* 判断enc编码的是不是字符串，只需要检查前两位是不是11，不是的话就是字符串． */
 /* Macro to determine if the entry is a string. String entries never start
  * with "11" as most significant bits of the first byte. */
 #define ZIP_IS_STR(enc) (((enc) & ZIP_STR_MASK) < ZIP_STR_MASK)
 
 /* Utility macros.*/
 
+/* 返回整个ziplist占用多少字节 */
 /* Return total bytes a ziplist is composed of. */
 #define ZIPLIST_BYTES(zl)       (*((uint32_t*)(zl)))
 
+/* 返回最后一个entry相对于起始位置的偏移量 */
 /* Return the offset of the last item inside the ziplist. */
 #define ZIPLIST_TAIL_OFFSET(zl) (*((uint32_t*)((zl)+sizeof(uint32_t))))
 
+/* 返回ziplist的长度（含有多少个entry)；如果该值为２^16-1说明不遍历整个ziplist就无法确定． */
 /* Return the length of a ziplist, or UINT16_MAX if the length cannot be
  * determined without scanning the whole ziplist. */
 #define ZIPLIST_LENGTH(zl)      (*((uint16_t*)((zl)+sizeof(uint32_t)*2)))
 
+/* 返回ziplist头的长度，包括zlbytes zltail entries */
 /* The size of a ziplist header: two 32 bit integers for the total
  * bytes count and last item offset. One 16 bit integer for the number
  * of items field. */
 #define ZIPLIST_HEADER_SIZE     (sizeof(uint32_t)*2+sizeof(uint16_t))
 
 /* Size of the "end of ziplist" entry. Just one byte. */
+/* 返回ziplist尾的１字节entry */
 #define ZIPLIST_END_SIZE        (sizeof(uint8_t))
 
+/* 返回指向第一条entry的指针 */
 /* Return the pointer to the first entry of a ziplist. */
 #define ZIPLIST_ENTRY_HEAD(zl)  ((zl)+ZIPLIST_HEADER_SIZE)
 
+/* 返回指向最后一条entry的指针 */
 /* Return the pointer to the last entry of a ziplist, using the
  * last entry offset inside the ziplist header. */
 #define ZIPLIST_ENTRY_TAIL(zl)  ((zl)+intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl)))
 
+/* 返回指向最后一个字节的指针，也就是指向FF entry的指针 */
 /* Return the pointer to the last byte of a ziplist, which is, the
  * end of ziplist FF entry. */
 #define ZIPLIST_ENTRY_END(zl)   ((zl)+intrev32ifbe(ZIPLIST_BYTES(zl))-1)
