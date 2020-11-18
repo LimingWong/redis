@@ -55,13 +55,14 @@
  * provided. It represents the entry type, integer or string, and in the case
  * of strings it also represents the length of the string payload.
  * So a complete entry is stored like this:
- *
+ * 每个在ziplist里面的entry都有包含两条信息的metadata。第一条存储前一个entry的长度，为了便于
+ * 从后向前遍历；第二条存储当前entry的编码，代表entry的类型是整型还是字符串。如果表示字符串，它还代表着字符串的长度。
  * <prevlen> <encoding> <entry-data>
  *
  * Sometimes the encoding represents the entry itself, like for small integers
  * as we'll see later. In such a case the <entry-data> part is missing, and we
  * could have just:
- *
+ * 有时编码代表entry本身，比如对于小的整型数。在这种情况下，就不会有<entry-data>这一项了
  * <prevlen> <encoding>
  *
  * The length of the previous entry, <prevlen>, is encoded in the following way:
@@ -70,14 +71,16 @@
  * is greater than or equal to 254, it will consume 5 bytes. The first byte is
  * set to 254 (FE) to indicate a larger value is following. The remaining 4
  * bytes take the length of the previous entry as value.
- *
+ * 前一个entry的长度<prevlen>这样编码：如果长度小于254个字节，那么这一项只会包含一个字节，表示范围
+ * 为0-253（不包括254）；如果长度大于等于154，这一项会占用5个字节，第一个字节被设为254（FE）作为一个后面
+ * 还有更大的数的一个标识。剩下的四个字节标识前一个entry的长度（无符号整型小端）。
  * So practically an entry is encoded in the following way:
- *
+ * 通常情况下，一条entry按照下列的方式进行编码。
  * <prevlen from 0 to 253> <encoding> <entry>
  *
  * Or alternatively if the previous entry length is greater than 253 bytes
  * the following encoding is used:
- *
+ * 或者是这样：
  * 0xFE <4 bytes unsigned little endian prevlen> <encoding> <entry>
  *
  * The encoding field of the entry depends on the content of the
@@ -89,29 +92,38 @@
  * different types and encodings is as follows. The first byte is always enough
  * to determine the kind of entry.
  *
- * |00pppppp| - 1 byte
+ * |00pppppp| - 1 byte  一个字节标识的字符串类型和长度，6bits标识长度，带有这个encoding头后面的字符串最长为63字节。
  *      String value with length less than or equal to 63 bytes (6 bits).
  *      "pppppp" represents the unsigned 6 bit length.
- * |01pppppp|qqqqqqqq| - 2 bytes
+ * |01pppppp|qqqqqqqq| - 2 bytes 
+ * 两个字节标识字符串类型和长度，14bits标识长度，带有这个encoding头后面的字符串最长为16383字节。14bits是按照大端存储的
  *      String value with length less than or equal to 16383 bytes (14 bits).
  *      IMPORTANT: The 14 bit number is stored in big endian.
  * |10000000|qqqqqqqq|rrrrrrrr|ssssssss|tttttttt| - 5 bytes
+ * 5个字节标识字符串类型和长度，其中后面四个字节标识长度，带有这个encoding头后面的字符串长度大于等于16384个字节，标识长度的四个
+ * 字节大端存储
  *      String value with length greater than or equal to 16384 bytes.
  *      Only the 4 bytes following the first byte represents the length
  *      up to 2^32-1. The 6 lower bits of the first byte are not used and
  *      are set to zero.
  *      IMPORTANT: The 32 bit number is stored in big endian.
  * |11000000| - 3 bytes
+ * 编码一个int16_t整型数；
  *      Integer encoded as int16_t (2 bytes).
  * |11010000| - 5 bytes
+ * 编码一个int32_t整型数
  *      Integer encoded as int32_t (4 bytes).
  * |11100000| - 9 bytes
+ * 编码一个int64_t整型数
  *      Integer encoded as int64_t (8 bytes).
  * |11110000| - 4 bytes
+ * 编码一个24bits整型数
  *      Integer encoded as 24 bit signed (3 bytes).
  * |11111110| - 2 bytes
+ * 编码一个8bits整型数
  *      Integer encoded as 8 bit signed (1 byte).
  * |1111xxxx| - (with xxxx between 0000 and 1101) immediate 4 bit integer.
+ * 后面4位编码0-12这13个数，注意实际的表示应该用后四位jian
  *      Unsigned integer from 0 to 12. The encoded value is actually from
  *      1 to 13 because 0000 and 1111 can not be used, so 1 should be
  *      subtracted from the encoded 4 bit value to obtain the right value.
@@ -119,7 +131,8 @@
  *
  * Like for the ziplist header, all the integers are represented in little
  * endian byte order, even when this code is compiled in big endian systems.
- *
+ * 所有的整型数都表示位小端，即使代码在大端机器上编译
+ * 
  * EXAMPLES OF ACTUAL ZIPLISTS
  * ===========================
  *
@@ -211,16 +224,17 @@
                                representing the previous entry len. */
 
 /* Different encoding/length possibilities */
+/* 不同的编码/长度可能 */
 #define ZIP_STR_MASK 0xc0
 #define ZIP_INT_MASK 0x30
-#define ZIP_STR_06B (0 << 6)
-#define ZIP_STR_14B (1 << 6)
-#define ZIP_STR_32B (2 << 6)
-#define ZIP_INT_16B (0xc0 | 0<<4)
-#define ZIP_INT_32B (0xc0 | 1<<4)
-#define ZIP_INT_64B (0xc0 | 2<<4)
-#define ZIP_INT_24B (0xc0 | 3<<4)
-#define ZIP_INT_8B 0xfe
+#define ZIP_STR_06B (0 << 6)  //1 byte包括表示长度（6位）和字符串（2位），不包含数据
+#define ZIP_STR_14B (1 << 6)  //2 bytes包括表示长度（14位）和字符串（2位），不包含数据
+#define ZIP_STR_32B (2 << 6)  //5 bytes包括表示长度（32位）和字符串（1个字节），不包含数据
+#define ZIP_INT_16B (0xc0 | 0<<4) //1 byte头，2byte数据
+#define ZIP_INT_32B (0xc0 | 1<<4) //1byte头，4byte数据
+#define ZIP_INT_64B (0xc0 | 2<<4) //1byte头，8byte数据
+#define ZIP_INT_24B (0xc0 | 3<<4) //1byte头，3byte数据
+#define ZIP_INT_8B 0xfe           //1byte头，1byte数据
 
 /* 4 bit integer immediate encoding |1111xxxx| with xxxx between
  * 0001 and 1101. */
