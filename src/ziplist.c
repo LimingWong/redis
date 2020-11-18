@@ -31,15 +31,20 @@
  * <uint32_t zltail> is the offset to the last entry in the list. This allows
  * a pop operation on the far side of the list without the need for full
  * traversal.
- * <uint32_t zltail> 是最后一个entry相对于起始位置的偏移量（字节为单位）。
+ * <uint32_t zltail> 是最后一个entry起始位置相对于起始位置的偏移量（字节为单位）。
+ * 这允许在尾部进行pop操作而不用遍历整个列表。
  * 
  * <uint16_t zllen> is the number of entries. When there are more than
  * 2^16-2 entries, this value is set to 2^16-1 and we need to traverse the
  * entire list to know how many items it holds.
+ * <uint16_t zllen> 是entry的数量。如果entry的数量超过2^16-2个，这个值被设置为2^16-1
+ * 我们需要遍历整个列表才能只能有多少个entry。
  *
  * <uint8_t zlend> is a special entry representing the end of the ziplist.
  * Is encoded as a single byte equal to 255. No other normal entry starts
  * with a byte set to the value of 255.
+ * <uint8_t zlend> 是一个特殊的entry标识ziplist的结束。它被编码为255（0xff）。没有其他
+ * 正常的entry以这个编码开始。
  *
  * ZIPLIST ENTRIES
  * ===============
