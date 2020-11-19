@@ -33,7 +33,21 @@
 #ifndef __QUICKLIST_H__
 #define __QUICKLIST_H__
 
+/* Node, quicklist 和 Iterator是目前使用的三种数据结构 */
 /* Node, quicklist, and Iterator are the only data structures used currently. */
+
+/* quicklistNode是一个32字节的结构体，将ziplist描述位quicklist 
+ * 三个指针：3*8=24个字节；
+ * 两个无符号整型：2*4=8个字节
+ * 共32个字节
+ * 
+ * 我们使用位字段来使quicklistNode保持32个字节
+ * count : 16 bits;记录ziplist有多少个entry;最大为65536，但是实际上小于32k，因为ziplist最大为65k字节，entry的数量至少为一半；
+ * encoding : 2 bits; 编码RAW=1,LZF=2 
+ * container:2 bits; NONE==1, ZIPLIST==2
+ * recompress:1 bit; 这个节点是否被压缩过
+ * attempted_compress : 1 bit; 在测试的时候用于验证 节点太小无法被压缩
+ * extra : 10 bits 保留未来使用，填充满32个bits */
 
 /* quicklistNode is a 32 byte struct describing a ziplist for a quicklist.
  * We use bit fields keep the quicklistNode at 32 bytes.
@@ -44,10 +58,10 @@
  * attempted_compress: 1 bit, boolean, used for verifying during testing.
  * extra: 10 bits, free for future use; pads out the remainder of 32 bits */
 typedef struct quicklistNode {
-    struct quicklistNode *prev;
-    struct quicklistNode *next;
-    unsigned char *zl;
-    unsigned int sz;             /* ziplist size in bytes */
+    struct quicklistNode *prev; //8 bytes
+    struct quicklistNode *next; //8 bytes
+    unsigned char *zl;          //8 bytes
+    unsigned int sz;             /* ziplist size in bytes; 4bytes,未压缩的大小 */
     unsigned int count : 16;     /* count of items in ziplist */
     unsigned int encoding : 2;   /* RAW==1 or LZF==2 */
     unsigned int container : 2;  /* NONE==1 or ZIPLIST==2 */
@@ -56,6 +70,11 @@ typedef struct quicklistNode {
     unsigned int extra : 10; /* more bits to steal for future usage */
 } quicklistNode;
 
+/* quicklistLZF是一个占用4+N字节的结构，
+ * sz是compressed数组的大小（字节）
+ * compressed是LZF数，长度是sz
+ * 注意：未压缩的长度存储在quicklistNode->sz这个变量
+ * 当quicklistNode->zl被压缩后，node->zl指向一个quicklistLZF结构体。 */
 /* quicklistLZF is a 4+N byte struct holding 'sz' followed by 'compressed'.
  * 'sz' is byte length of 'compressed' field.
  * 'compressed' is LZF data with total (compressed) length 'sz'
@@ -180,8 +199,8 @@ void quicklistReleaseIterator(quicklistIter *iter);
 quicklist *quicklistDup(quicklist *orig);
 int quicklistIndex(const quicklist *quicklist, const long long index,
                    quicklistEntry *entry);
-void quicklistRewind(quicklist *quicklist, quicklistIter *li);
-void quicklistRewindTail(quicklist *quicklist, quicklistIter *li);
+void quicklistRewind(quicklist *quicklist, quicklistIter *li);  /* no implementation */
+void quicklistRewindTail(quicklist *quicklist, quicklistIter *li); /* no implementation */
 void quicklistRotate(quicklist *quicklist);
 int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
                        unsigned int *sz, long long *sval,
