@@ -46,19 +46,22 @@
 /* Optimization levels for size-based filling */
 static const size_t optimization_level[] = {4096, 8192, 16384, 32768, 65536};
 
+/* 多元素的ziplist的size最大不能超过8kb */
 /* Maximum size in bytes of any multi-element ziplist.
  * Larger values will live in their own isolated ziplists. */
 #define SIZE_SAFETY_LIMIT 8192
 
+/* 可以进行压缩的ziplist的最小值，也就是说如果比这个值小就不可以压缩 */
 /* Minimum ziplist size in bytes for attempting compression. */
 #define MIN_COMPRESS_BYTES 48
 
+/* 压缩量的最小值，这也可以预防我们存储压缩后比压缩前还要大的数据 */
 /* Minimum size reduction in bytes to store compressed quicklistNode data.
  * This also prevents us from storing compression if the compression
  * resulted in a larger size than the original data. */
 #define MIN_COMPRESS_IMPROVE 8
 
-/* If not verbose testing, remove all debug printing. */
+/* If not verbose（冗长） testing, remove all debug printing. */
 #ifndef REDIS_TEST_VERBOSE
 #define D(...)
 #else
@@ -76,6 +79,7 @@ quicklistBookmark *_quicklistBookmarkFindByName(quicklist *ql, const char *name)
 quicklistBookmark *_quicklistBookmarkFindByNode(quicklist *ql, quicklistNode *node);
 void _quicklistBookmarkDelete(quicklist *ql, quicklistBookmark *bm);
 
+/* 使用宏初始化quicklistEntry */
 /* Simple way to give quicklistEntry structs default values with one call. */
 #define initEntry(e)                                                           \
     do {                                                                       \
@@ -88,13 +92,16 @@ void _quicklistBookmarkDelete(quicklist *ql, quicklistBookmark *bm);
     } while (0)
 
 #if __GNUC__ >= 3
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
+/* 是用来告诉gcc哪一条分支执行的概率更大，减少指令的跳转，编译器可以对代码进行优化 */
+/* 下面是通常的定义方法，是一种惯例 */
+#define likely(x) __builtin_expect(!!(x), 1)    /* x为真的概率很大 */
+#define unlikely(x) __builtin_expect(!!(x), 0)  /* x不为真的概率很大 */
 #else
 #define likely(x) (x)
 #define unlikely(x) (x)
 #endif
 
+/* 创建一个新的quicklist */
 /* Create a new quicklist.
  * Free with quicklistRelease(). */
 quicklist *quicklistCreate(void) {
@@ -110,6 +117,7 @@ quicklist *quicklistCreate(void) {
     return quicklist;
 }
 
+/* 设定尾部不压缩的节点的数量 */
 #define COMPRESS_MAX ((1 << QL_COMP_BITS)-1)
 void quicklistSetCompressDepth(quicklist *quicklist, int compress) {
     if (compress > COMPRESS_MAX) {
