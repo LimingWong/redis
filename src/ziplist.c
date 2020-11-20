@@ -310,7 +310,7 @@
  * Note that this is not how the data is actually encoded, is just what we
  * get filled by a function in order to operate more easily. */
 typedef struct zlentry {
-    unsigned int prevrawlensize; /* Bytes used to encode the previous entry len　为了标识前一个entry的大小，占用了此entry几个字节*/
+    unsigned int prevrawlensize; /* Bytes used to encode the previous entry len　为了标识前一个entry的大小，占用了此entry几个字节（1或者5）*/
     unsigned int prevrawlen;     /* Previous entry len. 前一个entry有几个字节．*/
     unsigned int lensize;        /* Bytes used to encode this entry type/len.　为了标识这个entry的类型/大小，用了几个字节
                                     For example strings have a 1, 2 or 5 bytes　字符串可能用１，２，５字节；整数总是用１个字节
@@ -373,6 +373,10 @@ unsigned int zipIntSize(unsigned char encoding) {
  *
  * The function returns the number of bytes used by the encoding/length
  * header stored in 'p'. */
+/* 向p指向的entry encoding/length字段，写入encoding字段。如果p是NULL，函数返回编码这个长度需要的空间（bytes）
+ * encoding ---> 可以是ZIP_INT_* or ZIP_STR_*或者在ZIP_INT_IMM_MIN和ZIP_INT_IMM_MAX之间的单字节的立即数
+ * rawlen   ---> 只有在encoding是ZIP_STR_*的时候使用，指的这个entry表示的字符串的长度
+ * 这个函数返回为了编码encoding/length而占用的空间（字节） */
 unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, unsigned int rawlen) {
     unsigned char len = 1, buf[5];
 

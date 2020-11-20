@@ -43,8 +43,10 @@
 #define REDIS_STATIC static
 #endif
 
+/* 节点中的ziplist按大小限制的优化等级（list-max-ziplist-size配置） */
 /* Optimization levels for size-based filling */
 static const size_t optimization_level[] = {4096, 8192, 16384, 32768, 65536};
+                                          /* -1    -2     -3     -4     -5 */
 
 /* 多元素的ziplist的size最大不能超过8kb */
 /* Maximum size in bytes of any multi-element ziplist.
@@ -466,13 +468,17 @@ REDIS_STATIC void _quicklistInsertNodeAfter(quicklist *quicklist,
     __quicklistInsertNode(quicklist, old_node, new_node, 1);
 }
 
+/* 判断某个节点的ziplist大小sz是否满足quicklist对于节点中ziplist大小的要求：fill决定。
+ * 满足要求返回1，不满足返回0 */
 REDIS_STATIC int
 _quicklistNodeSizeMeetsOptimizationRequirement(const size_t sz,
                                                const int fill) {
     if (fill >= 0)
         return 0;
 
+    /* 换算成optimization_level中的下标 */
     size_t offset = (-fill) - 1;
+    /* 判断下标是否越界 */
     if (offset < (sizeof(optimization_level) / sizeof(*optimization_level))) {
         if (sz <= optimization_level[offset]) {
             return 1;
@@ -484,6 +490,7 @@ _quicklistNodeSizeMeetsOptimizationRequirement(const size_t sz,
     }
 }
 
+/* ziplist的大小是否满足安全限制。 */
 #define sizeMeetsSafetyLimit(sz) ((sz) <= SIZE_SAFETY_LIMIT)
 
 REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node,
