@@ -54,11 +54,11 @@ typedef struct quicklistNode {
     struct quicklistNode *prev; //8 bytes
     struct quicklistNode *next; //8 bytes
     unsigned char *zl;          //8 bytes
-    unsigned int sz;             /* ziplist占用多少个字节， 4bytes,未压缩的大小 */
-    unsigned int count : 16;     /* ziplist中entry的数量；count of items in ziplist */
-    unsigned int encoding : 2;   /* 节点的编码：RAW==1 or LZF==2 */
-    unsigned int container : 2;  /* 容器类型：NONE==1 or ZIPLIST==2 */
-    unsigned int recompress : 1; /*1 bit; 这个节点是否被压缩过,如果压缩过，使用前要先解压缩，用过后再压缩； was this node previous compressed? */
+    unsigned int sz;             /* 4bytes;ziplist占用多少个字节， 4bytes,未压缩的大小 */
+    unsigned int count : 16;     /* 16bits;ziplist中entry的数量；count of items in ziplist */
+    unsigned int encoding : 2;   /* 2 bits 节点的编码：RAW==1 or LZF==2 */
+    unsigned int container : 2;  /* 2 bits 容器类型：NONE==1 or ZIPLIST==2 */
+    unsigned int recompress : 1; /*1 bit;为1的时候说明该节点之前压缩过； was this node previous compressed? */
     unsigned int attempted_compress : 1; /* 1 bit; 在测试的时候用于验证 节点太小无法被压缩;node can't compress; too small */
     unsigned int extra : 10; /* 10 bits 保留未来使用，填充满32个bits;more bits to steal for future usage */
 } quicklistNode;
@@ -70,7 +70,7 @@ typedef struct quicklistNode {
  * When quicklistNode->zl is compressed, node->zl points to a quicklistLZF */
 /* quicklistLZF是一个占用4+N字节的结构，
  * sz是compressed数组的大小（字节）
- * compressed是LZF数，长度是sz
+ * compressed是LZF算法压缩后的数据，长度是sz
  * 注意：未压缩的长度存储在quicklistNode->sz这个变量
  * 当quicklistNode->zl被压缩后，node->zl指向一个quicklistLZF结构体。 */
 typedef struct quicklistLZF {
@@ -117,7 +117,7 @@ typedef struct quicklistBookmark {
 /* quicklist结构体共40字节（64位系统）；
  * count ---> 总共有多少个entry
  * len   ---> quicklist共有多少个node
- * compress-> 压缩被禁止==-1；否则表示在quicklist尾部不进行压缩的节点的数量
+ * compress-> 压缩被禁止==0；否则表示在quicklist首尾部不进行压缩的节点的数量
  * fill  ---> 对于每个节点的填充因子，可以由用户指定list-max-ziplist-size;每个node可以占用的空间或者entry的数量
  * bookmarks> 是一个可选的特性，用于对这个结构体进行realloc；如果没有使用的时候，不会消耗任何内存。  */
 typedef struct quicklist {
@@ -152,9 +152,10 @@ typedef struct quicklistEntry {
 #define QUICKLIST_HEAD 0
 #define QUICKLIST_TAIL -1
 
+/* quicklist节点的编码 */
 /* quicklist node encodings */
-#define QUICKLIST_NODE_ENCODING_RAW 1
-#define QUICKLIST_NODE_ENCODING_LZF 2
+#define QUICKLIST_NODE_ENCODING_RAW 1 /* 标记：原生未压缩 */
+#define QUICKLIST_NODE_ENCODING_LZF 2 /* 标记：已经过lzf算法压缩 */
 
 /* quicklist compression disable */
 #define QUICKLIST_NOCOMPRESS 0
