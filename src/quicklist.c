@@ -121,7 +121,7 @@ quicklist *quicklistCreate(void) {
 }
 
 /* 设定尾部不压缩的节点的数量 */
-#define COMPRESS_MAX ((1 << QL_COMP_BITS)-1)
+#define COMPRESS_MAX ((1 << QL_COMP_BITS)-1) //32768
 void quicklistSetCompressDepth(quicklist *quicklist, int compress) {
     if (compress > COMPRESS_MAX) {
         compress = COMPRESS_MAX;
@@ -185,7 +185,7 @@ void quicklistRelease(quicklist *quicklist) {
     while (len--) {
         next = current->next;
 
-        /* 释放掉节点指向的ziplist空间 */
+        /* 释放掉节点指向的ziplist空间(如果是压缩的情况？) */
         zfree(current->zl);
         /* 整体的entry数量减去当前ziplist entry的数量 */
         quicklist->count -= current->count;
@@ -235,7 +235,7 @@ REDIS_STATIC int __quicklistCompressNode(quicklistNode *node) {
     lzf = zrealloc(lzf, sizeof(*lzf) + lzf->sz);
     /* 释放掉原来ziplist的没有压缩的空间 */
     zfree(node->zl);
-    /* 让node->zl指针指向压缩后的空间（数组） */
+    /* 让node->zl指针指向压缩后的空间（一个lzf结构体） */
     node->zl = (unsigned char *)lzf;
     /* 节点的编码改为QUICKLIST_NODE_ENCODING_LZF */
     node->encoding = QUICKLIST_NODE_ENCODING_LZF;
@@ -292,6 +292,7 @@ REDIS_STATIC int __quicklistDecompressNode(quicklistNode *node) {
     } while (0)
 
 /* TODO：recompress的含义到底是什么？有什么用？ */
+/* 强制node不会立即被冲压缩 */
 /* Force node to not be immediately re-compresable */
 #define quicklistDecompressNodeForUse(_node)                                   \
     do {                                                                       \
@@ -317,6 +318,7 @@ size_t quicklistGetLzf(const quicklistNode *node, void **data) {
 #define quicklistAllowsCompression(_ql) ((_ql)->compress != 0)
 
 /* 强制quicklist满足压缩深度条件 TODO：为什么需要压缩一些节点？node是干嘛的？最后那个？ */
+/* 功能：压缩node节点和深度后的第一个节点 */
 /* Force 'quicklist' to meet compression guidelines set by compress depth.
  * The only way to guarantee interior nodes get compressed is to iterate
  * to our "interior" compress depth then compress the next node we find.
