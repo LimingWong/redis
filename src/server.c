@@ -2841,7 +2841,7 @@ void initServer(void) {
         exit(1);
     }
 
-    createSharedObjects();
+    createSharedObjects();//给 shared 变量（struct sharedObjectsStruct类型）赋初值
     adjustOpenFilesLimit();
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {

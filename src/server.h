@@ -868,8 +868,11 @@ typedef struct client {
     char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;
 
+/* 服务器自动执行BGSAVE的条件 */
 struct saveparam {
+    /* 每多少秒执行一次 */
     time_t seconds;
+    /* 每经过多少次修改执行一次 */
     int changes;
 };
 
@@ -927,7 +930,7 @@ typedef struct clientBufferLimitsConfig {
 extern clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT];
 
 /* The redisOp structure defines a Redis Operation, that is an instance of
- * a command with an argument vector, database ID, propagation target
+ * a command with an argument vector, database ID, propagation（传播、扩展） target
  * (PROPAGATE_*), and command pointer.
  *
  * Currently only used to additionally propagate more commands to AOF/Replication
