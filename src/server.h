@@ -954,7 +954,8 @@ typedef struct redisOpArray {
 } redisOpArray;
 
 /* This structure is returned by the getMemoryOverheadData() function in
- * order to return memory overhead information. */
+ * order to return memory overhead information(附加信息). */
+/* 这个结构由getMemoryoVerheadData()函数返回，提供内存附加信息。 */
 struct redisMemOverhead {
     size_t peak_allocated;
     size_t total_allocated;
@@ -994,9 +995,10 @@ struct redisMemOverhead {
  * replication in order to make sure that chained slaves (slaves of slaves)
  * select the correct DB and are able to accept the stream coming from the
  * top-level master. */
+/* 目前只用来在加载的时候选择数据库 */
 typedef struct rdbSaveInfo {
     /* Used saving and loading. */
-    int repl_stream_db;  /* DB to select in server.master client. */
+    int repl_stream_db;  /* DB to select in server.master client. 作为client的server应该选哪个数据库*/
 
     /* Used only loading. */
     int repl_id_is_set;  /* True if repl_id field is set. */
