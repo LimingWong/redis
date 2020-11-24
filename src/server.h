@@ -622,9 +622,11 @@ typedef struct RedisModuleDigest {
 typedef struct redisObject {
     unsigned type:4;
     unsigned encoding:4;
+    /* 上次被访问的时间 */
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
+    /* 引用计数 */
     int refcount;
     void *ptr;
 } robj;
@@ -866,6 +868,7 @@ typedef struct client {
     uint64_t client_cron_last_memory_usage;
     int      client_cron_last_memory_type;
     /* Response buffer */
+    /* 响应buffer，16KB */
     int bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;

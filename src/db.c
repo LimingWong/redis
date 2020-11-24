@@ -919,6 +919,7 @@ void lastsaveCommand(client *c) {
     addReplyLongLong(c,server.lastsave);
 }
 
+/* ------------type命令的实现--------------------- */
 char* getObjectTypeName(robj *o) {
     char* type;
     if (o == NULL) {
@@ -946,6 +947,7 @@ void typeCommand(client *c) {
     o = lookupKeyReadWithFlags(c->db,c->argv[1],LOOKUP_NOTOUCH);
     addReplyStatus(c, getObjectTypeName(o));
 }
+/* ----------------------------------------------- */
 
 void shutdownCommand(client *c) {
     int flags = 0;

@@ -57,7 +57,7 @@
 #include <sys/socket.h>
 
 /* Our shared "common" objects */
-
+/* 共享对象 */
 struct sharedObjectsStruct shared;
 
 /* Global vars that are actually used as constants. The following double

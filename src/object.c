@@ -38,6 +38,7 @@
 
 /* ===================== Creation and parsing of objects ==================== */
 
+/* 创建类型为type，值为ptr的对象，编码统一设为OBJ_ENCODING_RAW */
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
@@ -60,12 +61,15 @@ robj *createObject(int type, void *ptr) {
  * and will not touch the object. This way it is free to access shared
  * objects such as small integers from different threads without any
  * mutex.
- *
+ * 
+ * 创建共享对象的通常做法：
  * A common patter to create shared objects:
  *
  * robj *myobject = makeObjectShared(createObject(...));
  *
  */
+/* 将对象的refcount设为特殊的值，这样incrRefCount和decrRefCount都不会对该对象做任何修改
+ * 这样就可以从不同的进程访问共享对象而不用加锁。 */
 robj *makeObjectShared(robj *o) {
     serverAssert(o->refcount == 1);
     o->refcount = OBJ_SHARED_REFCOUNT;
@@ -346,13 +350,17 @@ void freeStreamObject(robj *o) {
     freeStream(o->ptr);
 }
 
+/* 增加对象的引用 */
 void incrRefCount(robj *o) {
     if (o->refcount < OBJ_FIRST_SPECIAL_REFCOUNT) {
+        /* 引用数小于INT_MAX-1 */
         o->refcount++;
     } else {
         if (o->refcount == OBJ_SHARED_REFCOUNT) {
+            /* 引用数等于INT_MAX,则什么都不做，这个值不可修改  */
             /* Nothing to do: this refcount is immutable. */
         } else if (o->refcount == OBJ_STATIC_REFCOUNT) {
+            /* 引用数等于INT_MAX-1 */
             serverPanic("You tried to retain an object allocated in the stack");
         }
     }
@@ -360,6 +368,7 @@ void incrRefCount(robj *o) {
 
 void decrRefCount(robj *o) {
     if (o->refcount == 1) {
+        /* 引用数减1后没有引用，释放对象的空间 */
         switch(o->type) {
         case OBJ_STRING: freeStringObject(o); break;
         case OBJ_LIST: freeListObject(o); break;
@@ -373,6 +382,7 @@ void decrRefCount(robj *o) {
         zfree(o);
     } else {
         if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
+        /* 引用等于INT_MAX时，不可修改；否则直接减1 */
         if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount--;
     }
 }
@@ -380,6 +390,8 @@ void decrRefCount(robj *o) {
 /* This variant of decrRefCount() gets its argument as void, and is useful
  * as free method in data structures that expect a 'void free_object(void*)'
  * prototype for the free method. */
+/* 这个decrRefCount()函数的变种将它的参数类型变为void型指针，这在对于那些具有这种原型
+ * void free_object(void*)的对象很有用。 */
 void decrRefCountVoid(void *o) {
     decrRefCount(o);
 }
@@ -396,6 +408,7 @@ void decrRefCountVoid(void *o) {
  *    functionThatWillIncrementRefCount(obj);
  *    decrRefCount(obj);
  */
+/* 这个函数在上述场景有用 */
 robj *resetRefCount(robj *obj) {
     obj->refcount = 0;
     return obj;
