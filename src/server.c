@@ -1828,7 +1828,7 @@ void checkChildrenDone(void) {
 }
 
 /* This is our timer interrupt, called server.hz times per second.
- * Here is where we do a number of things that need to be done asynchronously.
+ * Here is where we do a number of things that need to be done asynchronously(异步).
  * For instance:
  *
  * - Active expired keys collection (it is also performed in a lazy way on
@@ -2309,7 +2309,7 @@ void createSharedObjects(void) {
     shared.exec = createStringObject("EXEC",4);
     for (j = 0; j < OBJ_SHARED_INTEGERS; j++) {
         shared.integers[j] =
-            makeObjectShared(createObject(OBJ_STRING,(void*)(long)j));
+            makeObjectShared(createObject(OBJ_STRING,(void*)(long)j));//将数据存储在对象ptr空间里面，太巧妙了！！
         shared.integers[j]->encoding = OBJ_ENCODING_INT;
     }
     for (j = 0; j < OBJ_SHARED_BULKHDR_LEN; j++) {
@@ -2996,9 +2996,11 @@ void initServer(void) {
      * no explicit limit in the user provided configuration we set a limit
      * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
      * useless crashes of the Redis instance for out of memory. */
+    /* 32位系统上内存的地址空间最大为4GB，如果用户没有明确指定内存的限制，我们设置为3GB
+     * 使用noeviction策略，这会避免内存溢出异常 */
     if (server.arch_bits == 32 && server.maxmemory == 0) {
         serverLog(LL_WARNING,"Warning: 32 bit instance detected but no memory limit set. Setting 3 GB maxmemory limit with 'noeviction' policy now.");
-        server.maxmemory = 3072LL*(1024*1024); /* 3 GB */
+        server.maxmemory = 3072LL*(1024*1024); /* 3 GB（32位系统最大内存不超过3GB） */
         server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
 

@@ -46,6 +46,7 @@
 
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
+/* 包含系统提供的最好的io多路复用器，下列按照性能递减 */
 #ifdef HAVE_EVPORT
 #include "ae_evport.c"
 #else
@@ -299,7 +300,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
      * events to be processed ASAP when this happens: the idea is that
      * processing events earlier is less dangerous than delaying them
      * indefinitely, and practice suggests it is. */
-    if (now < eventLoop->lastTime) {
+    if (now < eventLoop->lastTime) { 
         te = eventLoop->timeEventHead;
         while(te) {
             te->when_sec = 0;

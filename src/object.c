@@ -44,6 +44,7 @@ robj *createObject(int type, void *ptr) {
     o->type = type;
     o->encoding = OBJ_ENCODING_RAW;
     o->ptr = ptr;
+    /* 引用数设为1 */
     o->refcount = 1;
 
     /* Set the LRU to the current lruclock (minutes resolution), or
@@ -78,30 +79,41 @@ robj *makeObjectShared(robj *o) {
 
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
+/* 创建一个字符串对象，encoding为OBJ_ENCODING_RAW。type是OBJ_STRING；是一个纯粹的字符串，o->ptr指向一个
+ * 恰当的sds字符串 */
 robj *createRawStringObject(const char *ptr, size_t len) {
-    return createObject(OBJ_STRING, sdsnewlen(ptr,len));
+    return createObject(OBJ_STRING, sdsnewlen(ptr,len));//在堆上创建sds字符串
 }
 
 /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
+/* 创建一个字符串对象，encoding为OBJ_ENCODING_EMBSTR，type是OBJ_STRING。
+ * 这个对象比较特殊，存储的字符串实际上是一个不可修改的字符串，内存分配在和对象连续的空间中。
+ * sds header的类型使用sdshdr8，最多可以存储255个字节。 */
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
+    /* 将字符串和对象的空间分配在一块连续的空间中 */
     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
+    /* sh指向sds header的起始位置 */
     struct sdshdr8 *sh = (void*)(o+1);
 
     o->type = OBJ_STRING;
     o->encoding = OBJ_ENCODING_EMBSTR;
+    /* 指向sds buf起始位置 */
     o->ptr = sh+1;
     o->refcount = 1;
+    /* 刷新访问时间 */
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
         o->lru = LRU_CLOCK();
     }
 
+    /* 初始化header的信息 */
     sh->len = len;
     sh->alloc = len;
     sh->flags = SDS_TYPE_8;
+    /* 拷贝字符串 */
     if (ptr == SDS_NOINIT)
         sh->buf[len] = '\0';
     else if (ptr) {
@@ -119,6 +131,10 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  *
  * The current limit of 44 is chosen so that the biggest string object
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
+/* 如果字符串的长度小于OBJ_ENCODING_EMBSTR_SIZE_LIMIT,就创建一个以EMBSTR为编码的字符串，否则
+ * 就创建RAW为编码的字符串。
+ * 当前的限制是44，这个数字选择是因为robj(16字节)+sdsheader(3字节)+string+null_termination(1字节) 等于64字节.
+ * 之所以这样，是因为要适应jemalloc 64字节的arena，这样设置会使jemalloc分配更加高效 */
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
@@ -134,6 +150,10 @@ robj *createStringObject(const char *ptr, size_t len) {
  * integer, because the object is going to be used as value in the Redis key
  * space (for instance when the INCR command is used), so we want LFU/LRU
  * values specific for each key. */
+/* 从longlong型整数创建字符串对象，如果valueobj不为0，该函数尽量避免返回一个共享的整型数，
+ * 因为这个对象将会被用到键空间（比如INCR命令可能执行）
+ * 
+ * OBJ_ENCODING_INT编码的整数对象数据都存储在对象结构体的指针里面，没有申请新的空间 */
 robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     robj *o;
 
@@ -142,18 +162,22 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     {
         /* If the maxmemory policy permits, we can still return shared integers
          * even if valueobj is true. */
+        /* 如果最大内存策略允许，我们仍然可以返回一个共享的整型，即使valueobj为true */
         valueobj = 0;
     }
 
     if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) {
-        incrRefCount(shared.integers[value]);
+        /* 满足以上三个条件可以返回一个共享的对象，encoding使OJB_ENCODING_INT */
+        incrRefCount(shared.integers[value]);//引用数加1
         o = shared.integers[value];
     } else {
         if (value >= LONG_MIN && value <= LONG_MAX) {
+            /* 创建一个字符串对象，将在取值范围在long型的整数之间的数存储在指针的空间中（指针的空间此时不存储地址，而是整型数） */
             o = createObject(OBJ_STRING, NULL);
             o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*)((long)value);
         } else {
+            /* 否则编码成字符串，encoding为OBJ_ENCODING_RAW */
             o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }
     }
@@ -162,6 +186,7 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
 
 /* Wrapper for createStringObjectFromLongLongWithOptions() always demanding
  * to create a shared object if possible. */
+/* 上一个函数的包装函数，尽可能的创建共享对象 */
 robj *createStringObjectFromLongLong(long long value) {
     return createStringObjectFromLongLongWithOptions(value,0);
 }
@@ -170,6 +195,8 @@ robj *createStringObjectFromLongLong(long long value) {
  * object when LFU/LRU info are needed, that is, when the object is used
  * as a value in the key space, and Redis is configured to evict based on
  * LFU/LRU. */
+ /* 上上个函数的包装函数，尽量避免共享对象如果LFU/LRU信息被需要的时候，也就是当对象作为键空间的值的时候
+  * redis被配置为按照LFU/LRU回收策略回收 */
 robj *createStringObjectFromLongLongForValue(long long value) {
     return createStringObjectFromLongLongWithOptions(value,1);
 }
@@ -180,6 +207,10 @@ robj *createStringObjectFromLongLongForValue(long long value) {
  * and the output of snprintf() is not modified.
  *
  * The 'humanfriendly' option is used for INCRBYFLOAT and HINCRBYFLOAT. */
+/* 从一个long double浮点数创建字符串对象。如果humanfriendly非0，那么它不适用指数表达格式并且
+ * 会去掉尾部的0.这个结果可能会损失精度。否则会使用指数格式，并且snprintf()的结果不会被修改
+ * 
+ * humanfriendly这个选型会被INCRBYFLOAT和HINCRBYFLOAT两个命令使用。 */
 robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
     char buf[MAX_LONG_DOUBLE_CHARS];
     int len = ld2string(buf,sizeof(buf),value,humanfriendly? LD_STR_HUMAN: LD_STR_AUTO);
@@ -194,6 +225,12 @@ robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
  * will always result in a fresh object that is unshared (refcount == 1).
  *
  * The resulting object always has refcount set to 1. */
+/* 复制一个字符串对象，保证返回的对象和原来的对象有相同的编码
+ * 
+ * 这个函数在复制一个小的整数对象（或者一个字符串对象表示一个小的整数）的时候保证复制的整数对象是没有
+ * 共享的（refcount=1).
+ * 
+ * 返回对象的refcount总是被设为1. */
 robj *dupStringObject(const robj *o) {
     robj *d;
 
@@ -201,13 +238,13 @@ robj *dupStringObject(const robj *o) {
 
     switch(o->encoding) {
     case OBJ_ENCODING_RAW:
-        return createRawStringObject(o->ptr,sdslen(o->ptr));
+        return createRawStringObject(o->ptr,sdslen(o->ptr));//创建新的对象
     case OBJ_ENCODING_EMBSTR:
-        return createEmbeddedStringObject(o->ptr,sdslen(o->ptr));
+        return createEmbeddedStringObject(o->ptr,sdslen(o->ptr));//创建新的对象
     case OBJ_ENCODING_INT:
         d = createObject(OBJ_STRING, NULL);
         d->encoding = OBJ_ENCODING_INT;
-        d->ptr = o->ptr;
+        d->ptr = o->ptr;//数据存储在这个指针的空间里面。
         return d;
     default:
         serverPanic("Wrong encoding.");
@@ -215,6 +252,7 @@ robj *dupStringObject(const robj *o) {
     }
 }
 
+/* 创建quicklist对象，type为OBJ_LIST,encoding为OBJ_ENCODING_QUICKLIST */
 robj *createQuicklistObject(void) {
     quicklist *l = quicklistCreate();
     robj *o = createObject(OBJ_LIST,l);
@@ -222,6 +260,7 @@ robj *createQuicklistObject(void) {
     return o;
 }
 
+/* 创建ziplist对象,type为OBJ_LIST，encoding为OBJ_ENCODING_ZIPLIST */
 robj *createZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_LIST,zl);
@@ -229,6 +268,7 @@ robj *createZiplistObject(void) {
     return o;
 }
 
+/* 创建set对象，type为OBJ_SET, encoding为OBJ_ENCODING_HT */
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);
     robj *o = createObject(OBJ_SET,d);
@@ -236,6 +276,7 @@ robj *createSetObject(void) {
     return o;
 }
 
+/* 创建intset对象,type为OBJ_SET, encoding为OBJ_ENCODING_INTSET */
 robj *createIntsetObject(void) {
     intset *is = intsetNew();
     robj *o = createObject(OBJ_SET,is);
@@ -243,6 +284,7 @@ robj *createIntsetObject(void) {
     return o;
 }
 
+/* 创建hash对象，type为OBJ_HASH, encoding为OBJ_ENCODING_ZIPLIST */
 robj *createHashObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_HASH, zl);
@@ -250,6 +292,8 @@ robj *createHashObject(void) {
     return o;
 }
 
+/* 创建zset对象，type为OBJ_ZSET, encoding为OBJ_ENCODING_SKIPLIST */
+/* 注意这个zset对象含有dict和skiplist两种结构 */
 robj *createZsetObject(void) {
     zset *zs = zmalloc(sizeof(*zs));
     robj *o;
@@ -261,6 +305,7 @@ robj *createZsetObject(void) {
     return o;
 }
 
+/* 床zsetziplist对象，type为OBJ_ZSET，encoding为OBJ_ENCODINGZ_ZIPLIST */
 robj *createZsetZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_ZSET,zl);
@@ -268,6 +313,7 @@ robj *createZsetZiplistObject(void) {
     return o;
 }
 
+/* 创建stream对象，type为OBJ_STREAM,encoding为OBJ_ENCODING_STREAM */
 robj *createStreamObject(void) {
     stream *s = streamNew();
     robj *o = createObject(OBJ_STREAM,s);
@@ -275,6 +321,7 @@ robj *createStreamObject(void) {
     return o;
 }
 
+/* 创建module对象，type为OBJ_MODULE, encoding为OBJ_ENCODING_RAW */
 robj *createModuleObject(moduleType *mt, void *value) {
     moduleValue *mv = zmalloc(sizeof(*mv));
     mv->type = mt;
