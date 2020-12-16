@@ -61,23 +61,32 @@
     #endif
 #endif
 
+/* 创建事务处理程序状态结构; setsize为对要处理的文件事务的数量的上限的预估 */
 aeEventLoop *aeCreateEventLoop(int setsize) {
     aeEventLoop *eventLoop;
     int i;
 
+    /* 分配空间 */
     if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;
+    /* 一次性分配所有预估的文件事务的空间 */
     eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize);
+    /* 一次性分配所有空间 */
     eventLoop->fired = zmalloc(sizeof(aeFiredEvent)*setsize);
     if (eventLoop->events == NULL || eventLoop->fired == NULL) goto err;
     eventLoop->setsize = setsize;
     eventLoop->lastTime = time(NULL);
+    /* 没有为时间事务分配空间 */
     eventLoop->timeEventHead = NULL;
+    /* 下一个时间事务的id是0，表明当前没有时间事务 */
     eventLoop->timeEventNextId = 0;
     eventLoop->stop = 0;
+    /* 最大文件描述符为-1，表明目前没有文件描述符 */
     eventLoop->maxfd = -1;
+    /* 未指定处理事务前后的函数 */
     eventLoop->beforesleep = NULL;
     eventLoop->aftersleep = NULL;
     eventLoop->flags = 0;
+    /* 创建apiState，用eventLoop->apidata指向它 */
     if (aeApiCreate(eventLoop) == -1) goto err;
     /* Events with mask == AE_NONE are not set. So let's initialize the
      * vector with it. */
@@ -100,6 +109,7 @@ int aeGetSetSize(aeEventLoop *eventLoop) {
 }
 
 /* Tells the next iteration/s of the event processing to set timeout of 0. */
+/* 下一次事务处理时将timeout设为0 */
 void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
     if (noWait)
         eventLoop->flags |= AE_DONT_WAIT;
@@ -114,6 +124,9 @@ void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
  * performed at all.
  *
  * Otherwise AE_OK is returned and the operation is successful. */
+/* 修改event loop最大文件事件数量
+ * 如果有一个文件描述符已经在使用，并且大于当前请求的setsize-1，那么就会返回AE_ERR；不会修改原来的setsize
+ * 否则会返回AE_OK */
 int aeResizeSetSize(aeEventLoop *eventLoop, int setsize) {
     int i;
 
@@ -121,17 +134,20 @@ int aeResizeSetSize(aeEventLoop *eventLoop, int setsize) {
     if (eventLoop->maxfd >= setsize) return AE_ERR;
     if (aeApiResize(eventLoop,setsize) == -1) return AE_ERR;
 
+    /* 调整文件事务事件数组的大小 */
     eventLoop->events = zrealloc(eventLoop->events,sizeof(aeFileEvent)*setsize);
     eventLoop->fired = zrealloc(eventLoop->fired,sizeof(aeFiredEvent)*setsize);
     eventLoop->setsize = setsize;
 
     /* Make sure that if we created new slots, they are initialized with
      * an AE_NONE mask. */
+    /* 如果创建新的文件事件槽，确保初始化 */
     for (i = eventLoop->maxfd+1; i < setsize; i++)
         eventLoop->events[i].mask = AE_NONE;
     return AE_OK;
 }
 
+/* 删除eventloop,释放掉所有空间 */
 void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     aeApiFree(eventLoop);
     zfree(eventLoop->events);
@@ -147,44 +163,55 @@ void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     zfree(eventLoop);
 }
 
+/* 将stop标志位置1 */
 void aeStop(aeEventLoop *eventLoop) {
     eventLoop->stop = 1;
 }
 
+/* 创建文件事务，成功返回AE_OK;失败就返回AE_ERR */
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         aeFileProc *proc, void *clientData)
 {
+    /* 如果待创建文件事务的文件描述符大于等于当前的setsize，那么说明已经达到了文件事务数量的上限 */
     if (fd >= eventLoop->setsize) {
         errno = ERANGE;
         return AE_ERR;
     }
     aeFileEvent *fe = &eventLoop->events[fd];
 
+    /* 注册fd的mask事件 */
     if (aeApiAddEvent(eventLoop, fd, mask) == -1)
         return AE_ERR;
     fe->mask |= mask;
+    /* 如果fd可读，则指定读文件处理函数；如果可写，指定写文件处理器 */
     if (mask & AE_READABLE) fe->rfileProc = proc;
     if (mask & AE_WRITABLE) fe->wfileProc = proc;
+    /* 将客户端数据指针交给该事件 */
     fe->clientData = clientData;
     if (fd > eventLoop->maxfd)
+        /* 如果有必要，更新最大fd */
         eventLoop->maxfd = fd;
     return AE_OK;
 }
 
+/* 删除某个文件事务；如果mask包括fd上所有的监听事件，则会取消注册fd，否则只会修改监听的事件 */
 void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask)
 {
     if (fd >= eventLoop->setsize) return;
     aeFileEvent *fe = &eventLoop->events[fd];
+    /* 该fd还没有初始化，即还未注册文件事务 */
     if (fe->mask == AE_NONE) return;
 
     /* We want to always remove AE_BARRIER if set when AE_WRITABLE
      * is removed. */
+    /* 如果要取消监听写事件，那么也要取消AE_BARRIER事件 */
     if (mask & AE_WRITABLE) mask |= AE_BARRIER;
 
     aeApiDelEvent(eventLoop, fd, mask);
     fe->mask = fe->mask & (~mask);
     if (fd == eventLoop->maxfd && fe->mask == AE_NONE) {
         /* Update the max fd */
+        /* 这种情况下需要更新max fd */
         int j;
 
         for (j = eventLoop->maxfd-1; j >= 0; j--)
@@ -193,6 +220,7 @@ void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask)
     }
 }
 
+/* 获取指定fd上面的监听的事件 */
 int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
     if (fd >= eventLoop->setsize) return 0;
     aeFileEvent *fe = &eventLoop->events[fd];
@@ -200,6 +228,7 @@ int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
     return fe->mask;
 }
 
+/* 获取当前时间，存储到seconds变量和milliseconds中 */
 static void aeGetTime(long *seconds, long *milliseconds)
 {
     struct timeval tv;
@@ -209,6 +238,7 @@ static void aeGetTime(long *seconds, long *milliseconds)
     *milliseconds = tv.tv_usec/1000;
 }
 
+/*  */
 static void aeAddMillisecondsToNow(long long milliseconds, long *sec, long *ms) {
     long cur_sec, cur_ms, when_sec, when_ms;
 
