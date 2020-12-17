@@ -5130,18 +5130,27 @@ int main(int argc, char **argv) {
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
+    /* 地域设置 */
     setlocale(LC_COLLATE,"");
     tzset(); /* Populates 'timezone' global. */
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+    /* 设置随机数种子 */
     srand(time(NULL)^getpid());
+    /* 获取当前的时间存入tv变量 */
     gettimeofday(&tv,NULL);
     crc64_init();
 
+    /* 配置哈希函数的种子 */
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
+    
+    /* 设定哨兵模式标志 */
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+    
+    /* 初始化服务器配置 */
     initServerConfig();
+    /* ACL子系统必须尽快初始化，因为基础网络代码和客户端创建依赖它 */
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
     moduleInitModulesSystem();
@@ -5149,6 +5158,7 @@ int main(int argc, char **argv) {
 
     /* Store the executable path and arguments in a safe place in order
      * to be able to restart the server later. */
+    /* 使用绝对路径保存执行路径和参数在一个安全的地方，为了以后能够重启服务器 */
     server.executable = getAbsolutePath(argv[0]);
     server.exec_argv = zmalloc(sizeof(char*)*(argc+1));
     server.exec_argv[argc] = NULL;
@@ -5157,6 +5167,7 @@ int main(int argc, char **argv) {
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
+    /* 如果是哨兵模式，需要进行相应的初始化 */
     if (server.sentinel_mode) {
         initSentinelConfig();
         initSentinel();
@@ -5170,12 +5181,14 @@ int main(int argc, char **argv) {
     else if (strstr(argv[0],"redis-check-aof") != NULL)
         redis_check_aof_main(argc,argv);
 
+    /* 解析参数 */
     if (argc >= 2) {
         j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
         char *configfile = NULL;
 
         /* Handle special options --help and --version */
+        /* 处理特殊的选项 */
         if (strcmp(argv[1], "-v") == 0 ||
             strcmp(argv[1], "--version") == 0) version();
         if (strcmp(argv[1], "--help") == 0 ||
@@ -5192,11 +5205,13 @@ int main(int argc, char **argv) {
         }
 
         /* First argument is the config file name? */
+        /* 第一个参数是配置文件的名字 */
         if (argv[j][0] != '-' || argv[j][1] != '-') {
             configfile = argv[j];
             server.configfile = getAbsolutePath(configfile);
             /* Replace the config file in server.exec_argv with
              * its absolute path. */
+            /* 使用相对路径替换已经保存的参数 */
             zfree(server.exec_argv[j]);
             server.exec_argv[j] = zstrdup(server.configfile);
             j++;
@@ -5206,6 +5221,7 @@ int main(int argc, char **argv) {
          * configuration file. For instance --port 6380 will generate the
          * string "port 6380\n" to be parsed after the actual file name
          * is parsed, if any. */
+        /* 将参数放入options中 */
         while(j != argc) {
             if (argv[j][0] == '-' && argv[j][1] == '-') {
                 /* Option name */
@@ -5232,7 +5248,9 @@ int main(int argc, char **argv) {
             exit(1);
         }
         resetServerSaveParams();
+        /* 加载服务器配置 */
         loadServerConfig(configfile,options);
+        /* 释放options空间 */
         sdsfree(options);
     }
 

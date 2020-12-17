@@ -86,6 +86,7 @@ typedef struct aeFileEvent {
 /* 时间事务结构体 */
 typedef struct aeTimeEvent {
     long long id; /* time event identifier. 时间事务id */
+    /* 何时触发这个时间 */
     long when_sec; /* seconds 秒*/
     long when_ms; /* milliseconds 毫秒*/
     aeTimeProc *timeProc; /* 时间事件处理函数 */
