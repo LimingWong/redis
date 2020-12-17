@@ -5274,12 +5274,16 @@ int main(int argc, char **argv) {
     }
 
     readOOMScoreAdj();
+    /* 初始化服务器配置 */
     initServer();
+    /* 如果后台运行或者指定了pidfile的路径，那么创建pid文件并写入pid */
     if (background || server.pidfile) createPidFile();
     redisSetProcTitle(argv[0]);
+    /* 显示logo */
     redisAsciiArt();
     checkTcpBacklogSettings();
 
+    /* 如果不是哨兵模式 */
     if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
         serverLog(LL_WARNING,"Server initialized");
@@ -5289,8 +5293,11 @@ int main(int argc, char **argv) {
         moduleLoadFromQueue();
         ACLLoadUsersAtStartup();
         InitServerLast();
+        /* 从磁盘加载数据 */
         loadDataFromDisk();
+        /* 如果集群模式开启了 */
         if (server.cluster_enabled) {
+            /* 验证 */
             if (verifyClusterConfigWithData() == C_ERR) {
                 serverLog(LL_WARNING,
                     "You can't have keys in a DB different than DB 0 when in "
