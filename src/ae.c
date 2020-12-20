@@ -310,7 +310,7 @@ int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
  * 2) Use a skiplist to have this operation as O(1) and insertion as O(log(N)).
  */
 /* 搜索第一个准备好的时间事务，因为是无序的所以需要遍历，所以时间复杂度为O(n)
- * 可以对这个操作优化：
+ * 可以对这个操作优化（现在redis并不需要，因为现在redis正常情况下只有一个时间事件（serverCron））：
  * 1. 在添加事务时排序，所以最近的事务就在链表头部，但是插入和删除的操作复杂度仍然是O(N) 
  * 2. 使用skiplist，搜索操作复杂度为O(1)，插入复杂度为O(log(N))*/
 static aeTimeEvent *aeSearchNearestTimer(aeEventLoop *eventLoop)
@@ -414,10 +414,10 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             /* 已处理事务加1 */
             processed++;
             if (retval != AE_NOMORE) {
-                /* 还没处理完，则给这个时间事务添加时间 */
+                /* 周期性事件，一定时间后再接着执行 */
                 aeAddMillisecondsToNow(retval,&te->when_sec,&te->when_ms);
             } else {
-                /* 处理完标记为待删除 */
+                /* 定时事件，只执行一次就删除 */
                 te->id = AE_DELETED_EVENT_ID;
             }
         }
@@ -453,7 +453,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
      * file events to process as long as we want to process time
      * events, in order to sleep until the next time event is ready
      * to fire. */
-    /* 有文件事件或者时间事件（没有设定AE_DONT_WAIT） */
+    /* 有检测的文件事件（不确定有没有事件到达）或者时间事件（没有设定AE_DONT_WAIT） */
     if (eventLoop->maxfd != -1 ||
         ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
         int j;

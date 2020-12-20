@@ -1845,15 +1845,29 @@ void checkChildrenDone(void) {
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
  */
-
+/* 这是我们的定时器中断函数（时间事务处理函数），每秒中调用sever.hz次
+ * 这个函数是处理异步事件的函数，比如：
+ * 1. 过期键的回收
+ * 2. 软件看门狗
+ * 3. 更新一些统计数据
+ * 4. 对数据库表的渐进式地rehash
+ * 5. 触发BASAVE/AOF重写，处理中止的子进程
+ * 6. 不同类型的客户端超时处理
+ * 7. 复制服务器的重连
+ *    。。。。
+ *     等等
+ * 在这个函数内直接调用的每秒都会调用server.hz次，所以如果我们想要一些东西执行的不要这么频繁，可以使用
+ * 一个宏: run_with_period(milliseconds) {...} */
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
+    /* 这三个参数都没有使用，只是为了符合时间事件处理器函数的形式 */
     UNUSED(eventLoop);
     UNUSED(id);
     UNUSED(clientData);
 
     /* Software watchdog: deliver the SIGALRM that will reach the signal
      * handler if we don't return here fast enough. */
+    /* 软件看门狗：TODO：need to understand. */
     if (server.watchdog_period) watchdogScheduleSignal(server.watchdog_period);
 
     /* Update the time cache. */
@@ -1962,13 +1976,16 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* We need to do a few operations on clients asynchronously. */
+    /* 我们需要在客户端上执行一些异步的操作 */
     clientsCron();
 
     /* Handle background operations on Redis databases. */
+    /* 在redis数据库上执行一些后台操作 */
     databasesCron();
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
+    /* 如果用户请求在BGSAVE执行过程中执行一次aof重写，那么就开始aof重写 */
     if (!hasActiveChildProcess() &&
         server.aof_rewrite_scheduled)
     {
@@ -2087,7 +2104,9 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           0,
                           &ei);
 
+    /* 记录执行了多少个循环的变量加1 */
     server.cronloops++;
+    /* 返回周期 */
     return 1000/server.hz;
 }
 

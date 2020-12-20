@@ -64,14 +64,19 @@ int anetSetBlock(char *err, int fd, int non_block) {
     /* Set the socket blocking (if non_block is zero) or non-blocking.
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
      * interrupted by a signal. */
+    /* 设置socket为阻塞（non_block参数为0）或者非阻塞模式。注意fcntl函数设定cmd为G_GETFL和F_SETFL时
+     * 不能被信号中断。 */
+    /* 或者当前fd的标志。 */
     if ((flags = fcntl(fd, F_GETFL)) == -1) {
         anetSetError(err, "fcntl(F_GETFL): %s", strerror(errno));
         return ANET_ERR;
     }
 
     if (non_block)
+        /* 设定为非阻塞模式 */
         flags |= O_NONBLOCK;
     else
+        /* 设定为阻塞模式 */
         flags &= ~O_NONBLOCK;
 
     if (fcntl(fd, F_SETFL, flags) == -1) {
@@ -81,10 +86,12 @@ int anetSetBlock(char *err, int fd, int non_block) {
     return ANET_OK;
 }
 
+/* 设定非阻塞模式的装饰函数 */
 int anetNonBlock(char *err, int fd) {
     return anetSetBlock(err,fd,1);
 }
 
+/* 设定阻塞模式的装饰函数 */
 int anetBlock(char *err, int fd) {
     return anetSetBlock(err,fd,0);
 }
