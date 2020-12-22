@@ -652,17 +652,21 @@ int collateStringObjects(robj *a, robj *b) {
  * point of view of a string comparison, otherwise 0 is returned. Note that
  * this function is faster then checking for (compareStringObject(a,b) == 0)
  * because it can perform some more optimization. */
+/* 判断两个字符串对象是否相等，相等返回1，否则返回0
+ * 这个函数比单纯调用compareStringObject(a, b) == 0要快，因为这个函数有一定优化 */
 int equalStringObjects(robj *a, robj *b) {
     if (a->encoding == OBJ_ENCODING_INT &&
         b->encoding == OBJ_ENCODING_INT){
         /* If both strings are integer encoded just check if the stored
          * long is the same. */
+        /* 如果两个字符串都是使用整型数编码，只需要检测存储的指针是不是指向同一个变量。 */
         return a->ptr == b->ptr;
     } else {
         return compareStringObjects(a,b) == 0;
     }
 }
 
+/* 返回字符串对象的长度 */
 size_t stringObjectLen(robj *o) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (sdsEncodedObject(o)) {
@@ -789,6 +793,7 @@ int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) 
     return C_OK;
 }
 
+/* 将encoding转换为字符串名字 */
 char *strEncoding(int encoding) {
     switch(encoding) {
     case OBJ_ENCODING_RAW: return "raw";
@@ -803,7 +808,7 @@ char *strEncoding(int encoding) {
     }
 }
 
-/* =========================== Memory introspection ========================= */
+/* =========================== Memory introspection（内存检查） ========================= */
 
 
 /* This is an helper function with the goal of estimating the memory
@@ -820,6 +825,7 @@ char *strEncoding(int encoding) {
  * Actually the number of nodes and keys may be different depending
  * on the insertion speed and thus the ability of the radix tree
  * to compress prefixes. */
+/* 这是个辅助函数，用来估计存储形式为radix tree的Stream ID占用内存的大小 */
 size_t streamRadixTreeMemoryUsage(rax *rax) {
     size_t size;
     size = rax->numele * sizeof(streamID);
@@ -834,6 +840,8 @@ size_t streamRadixTreeMemoryUsage(rax *rax) {
  * case of aggregated data types where only "sample_size" elements
  * are checked and averaged to estimate the total size. */
 #define OBJ_COMPUTE_SIZE_DEF_SAMPLES 5 /* Default sample size. */
+/* 返回key对应的value在内存中所消耗的空间（字节为单位）。注意返回值只是一个估计。
+ * 这个函数是MEMORY USAGE命令的一个辅助函数 */
 size_t objectComputeSize(robj *o, size_t sample_size) {
     sds ele, ele2;
     dict *d;
@@ -1007,6 +1015,8 @@ void freeMemoryOverheadData(struct redisMemOverhead *mh) {
 /* Return a struct redisMemOverhead filled with memory overhead
  * information used for the MEMORY OVERHEAD and INFO command. The returned
  * structure pointer should be freed calling freeMemoryOverheadData(). */
+/* 返回一个redisMemOverhead结构体，填充了内存开销信息。这个信息用于MEMORY OVERHEAD命令和
+ * INFO命令。返回的redisMemOverhead机构提应该使用freeMemoryOverheadData()函数释放 */
 struct redisMemOverhead *getMemoryOverheadData(void) {
     int j;
     size_t mem_total = 0;
@@ -1112,6 +1122,7 @@ struct redisMemOverhead *getMemoryOverheadData(void) {
 
 /* Helper for "MEMORY allocator-stats", used as a callback for the jemalloc
  * stats output. */
+/* MEMORY allocator-stats命令的辅助函数 */
 void inputCatSds(void *result, const char *str) {
     /* result is actually a (sds *), so re-cast it here */
     sds *info = (sds *)result;
@@ -1120,6 +1131,7 @@ void inputCatSds(void *result, const char *str) {
 
 /* This implements MEMORY DOCTOR. An human readable analysis of the Redis
  * memory condition. */
+/* 是MEMORY DOCTOR命令的实现，一种可读性较高的redis内存状态分析 */
 sds getMemoryDoctorReport(void) {
     int empty = 0;          /* Instance is empty or almost empty. */
     int big_peak = 0;       /* Memory peak is much larger than used mem. */
@@ -1237,6 +1249,11 @@ sds getMemoryDoctorReport(void) {
  * The lru_idle and lru_clock args are only relevant if policy
  * is MAXMEMORY_FLAG_LRU.
  * Either or both of them may be <0, in that case, nothing is set. */
+/* 设定对象中lru属性，根据server.maxmemory_policy来设定。
+ * 形参中的lfu_freq只有在最大内存策略是MAXMEMORY_FLAG_LFU的时候才相关
+ * 形参中的lru_idle和lru_clock只有在最大内存策略是MAXMEMORY_FLAG_LRU的时候才相关
+ * 两个的任何一个可能都是0，如果两个都是0，那么就不会设置lru属性 
+ * server.maxmemory_policy的默认值是MAXMEMORY_NO_EVICTION，即不进行内存回收*/
 int objectSetLRUOrLFU(robj *val, long long lfu_freq, long long lru_idle,
                        long long lru_clock, int lru_multiplier) {
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
@@ -1285,6 +1302,8 @@ robj *objectCommandLookupOrReply(client *c, robj *key, robj *reply) {
 
 /* Object command allows to inspect the internals of an Redis Object.
  * Usage: OBJECT <refcount|encoding|idletime|freq> <key> */
+/* Object命令允许用户查看redis对象内部的信息。
+ * 使用方法：OBJECT <refcount|encoding|idletime|freq> <key> */
 void objectCommand(client *c) {
     robj *o;
 

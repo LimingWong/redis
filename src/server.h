@@ -599,7 +599,8 @@ typedef struct RedisModuleDigest {
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
-/* redisobj的编码 */
+/* redisobj的编码。一些对象，如字符串和哈希表，在内部可以有多种表示的方式。对象结构体中的'encoding'变量
+ * 用来表示该对象所使用的编码。编码的类型如下 */
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
 #define OBJ_ENCODING_INT 1     /* Encoded as integer */
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
@@ -616,13 +617,13 @@ typedef struct RedisModuleDigest {
 #define LRU_CLOCK_MAX ((1<<LRU_BITS)-1) /* Max value of obj->lru */
 #define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
 
-#define OBJ_SHARED_REFCOUNT INT_MAX     /* Global object never destroyed. */
-#define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
+#define OBJ_SHARED_REFCOUNT INT_MAX     /* Global object never destroyed. 全局对象不能销毁 */
+#define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. 在栈中分配的对象 */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
 typedef struct redisObject {
     unsigned type:4;
     unsigned encoding:4;
-    /* 上次被访问的时间 */
+    /* 上次被访问的时间，是用来内存回收的 */
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
@@ -634,6 +635,7 @@ typedef struct redisObject {
 /* The a string name for an object's type as listed above
  * Native types are checked against the OBJ_STRING, OBJ_LIST, OBJ_* defines,
  * and Module types have their registered name returned. */
+/* 可以通过这个函数或者一个对象的类型，模块的类型可以通过moduleValue的结构体获取 */
 char *getObjectTypeName(robj*);
 
 /* Macro used to initialize a Redis object allocated on the stack.
@@ -1770,7 +1772,7 @@ void execCommandAbort(client *c, sds error);
 void execCommandPropagateMulti(client *c);
 void execCommandPropagateExec(client *c);
 
-/* Redis object implementation */
+/* Redis object implementation（redis对象实现）: object.c */
 void decrRefCount(robj *o);
 void decrRefCountVoid(void *o);
 void incrRefCount(robj *o);
@@ -1811,7 +1813,7 @@ int getDoubleFromObject(const robj *o, double *target);
 int getLongLongFromObject(robj *o, long long *target);
 int getLongDoubleFromObject(robj *o, long double *target);
 int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, const char *msg);
-char *strEncoding(int encoding);
+char *strEncoding(int encoding); 
 int compareStringObjects(robj *a, robj *b);
 int collateStringObjects(robj *a, robj *b);
 int equalStringObjects(robj *a, robj *b);
@@ -2033,8 +2035,8 @@ void activeDefragCycle(void);
 unsigned int getLRUClock(void);
 unsigned int LRU_CLOCK(void);
 const char *evictPolicyToString(void);
-struct redisMemOverhead *getMemoryOverheadData(void);
-void freeMemoryOverheadData(struct redisMemOverhead *mh);
+struct redisMemOverhead *getMemoryOverheadData(void); /* 实现在object.c中 */
+void freeMemoryOverheadData(struct redisMemOverhead *mh); /* 实现在object.c中 */
 void checkChildrenDone(void);
 int setOOMScoreAdj(int process_class);
 
