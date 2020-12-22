@@ -592,7 +592,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */
- /* 等待milliseconds毫秒，知道给定的文件描述符变得可读/写/异常
+ /* 等待milliseconds毫秒，直到给定的文件描述符变得可读/写/异常
   *如果执行成功，返回对应的mask；如果超时返回0，如果失败返回-1 */
 int aeWait(int fd, int mask, long long milliseconds) {
     struct pollfd pfd;
@@ -624,6 +624,7 @@ void aeMain(aeEventLoop *eventLoop) {
     }
 }
 
+/* 当前io多路复用器使用的哪种api */
 char *aeGetApiName(void) {
     return aeApiName();
 }
