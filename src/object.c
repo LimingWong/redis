@@ -469,10 +469,12 @@ int checkType(client *c, robj *o, int type) {
     return 0;
 }
 
+/* s能否表示为longlong类型，如果能将值存储在llval中并返回C_OK;否则返回C_ERR。 */
 int isSdsRepresentableAsLongLong(sds s, long long *llval) {
     return string2ll(s,sdslen(s),llval) ? C_OK : C_ERR;
 }
 
+/* 字符串对象能够表示为longlong类型，如果能则将值存储在llval中并返回C_OK;否则返回C_ERR. */
 int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     if (o->encoding == OBJ_ENCODING_INT) {
@@ -676,6 +678,8 @@ size_t stringObjectLen(robj *o) {
     }
 }
 
+/* 尝试将字符串对象转换为double数并且存储在target指向的空间中
+ * 如果成功返回C_OK，如果失败返回C_ERR。 */
 int getDoubleFromObject(const robj *o, double *target) {
     double value;
 
