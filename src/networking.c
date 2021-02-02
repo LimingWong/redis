@@ -42,6 +42,8 @@ int ProcessingEventsWhileBlocked = 0; /* See processEventsWhileBlocked(). */
 /* Return the size consumed from the allocator, for the specified SDS string,
  * including internal fragmentation. This function is used in order to compute
  * the client output buffer size. */
+/* 返回为sds字符串分配的空间，包括header的空间
+ * 这个函数用于计算客户端输出缓存空间大小 */
 size_t sdsZmallocSize(sds s) {
     void *sh = sdsAllocPtr(s);
     return zmalloc_size(sh);
@@ -49,6 +51,8 @@ size_t sdsZmallocSize(sds s) {
 
 /* Return the amount of memory used by the sds string at object->ptr
  * for a string object. */
+/* 返回字符串对象中字符串所占用的空间 */
+/* 在debug.c和scripting.c中各调用了一次 */
 size_t getStringObjectSdsUsedMemory(robj *o) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     switch(o->encoding) {
@@ -59,6 +63,8 @@ size_t getStringObjectSdsUsedMemory(robj *o) {
 }
 
 /* Client.reply list dup and free methods. */
+/* 这个函数用于复制客户端输出缓冲区链表中一个节点的数据（clientReplyBlock类型） */
+/* 只在aof.c中调用了一次 */
 void *dupClientReplyValue(void *o) {
     clientReplyBlock *old = o;
     clientReplyBlock *buf = zmalloc(sizeof(clientReplyBlock) + old->size);
@@ -66,23 +72,32 @@ void *dupClientReplyValue(void *o) {
     return buf;
 }
 
+/* 删除客户端输出缓冲区链表中一个节点的数据（clientReplyBlock类型) */
+/* 只在aof.c中调用了一次 */
 void freeClientReplyValue(void *o) {
     zfree(o);
 }
 
+/* a和b两个字符串对象包含的字符串是否相同 */
+/* 只在本文件中使用了一次 */
 int listMatchObjects(void *a, void *b) {
     return equalStringObjects(a,b);
 }
 
 /* This function links the client to the global linked list of clients.
  * unlinkClient() does the opposite, among other things. */
+/* 将c添加到客户端全局的链表中，unlinkClient()做相反的事情 */
 void linkClient(client *c) {
     listAddNodeTail(server.clients,c);
     /* Note that we remember the linked list node where the client is stored,
      * this way removing the client in unlinkClient() will not require
      * a linear scan, but just a constant time operation. */
+    /* 在客户端的数据结构中存储自己所在的链表节点的指针，这样在执行unlinkClient()函数的时候不会对
+     * 整个链表进行扫描，可以在常数时间完成这个操作。 */
     c->client_list_node = listLast(server.clients);
+    /* 将客户端id转换为网络字节序 */
     uint64_t id = htonu64(c->id);
+    /* TODO：rax */
     raxInsert(server.clients_index,(unsigned char*)&id,sizeof(id),c,NULL);
 }
 
@@ -93,15 +108,23 @@ client *createClient(connection *conn) {
      * This is useful since all the commands needs to be executed
      * in the context of a client. When commands are executed in other
      * contexts (for instance a Lua script) we need a non connected client. */
+    /* 如果传入一个NULL那么会创建一个非连接的客户端。由于所有的命令的都需要在客户端的上下文中执行(所有命令的函数实现
+     * 的参数都是一个客户端指针)，因此在有些情况下这样特殊的客户端是有用的比如执行lua脚本的时候。*/
     if (conn) {
+        /* 设置客户的非阻塞 */
         connNonBlock(conn);
+        /* 有数据就立刻发出去，禁止Nagla算法 */
         connEnableTcpNoDelay(conn);
         if (server.tcpkeepalive)
+            /* 设定keeplive选项 */
             connKeepAlive(conn,server.tcpkeepalive);
+        /* 设定读请求处理函数 */
         connSetReadHandler(conn, readQueryFromClient);
+        /* conn的privdata属性指向该客户端 */
         connSetPrivateData(conn, c);
     }
 
+    /* 默认指向0号数据库 */
     selectDb(c,0);
     uint64_t client_id = ++server.next_client_id;
     c->id = client_id;
@@ -125,6 +148,7 @@ client *createClient(connection *conn) {
     c->ctime = c->lastinteraction = server.unixtime;
     /* If the default user does not require authentication, the user is
      * directly authenticated. */
+    /* 判断客户端是否有权限操作数据库 */
     c->authenticated = (c->user->flags & USER_FLAG_NOPASS) &&
                        !(c->user->flags & USER_FLAG_DISABLED);
     c->replstate = REPL_STATE_NONE;
@@ -139,6 +163,7 @@ client *createClient(connection *conn) {
     c->reply = listCreate();
     c->reply_bytes = 0;
     c->obuf_soft_limit_reached_time = 0;
+    /* 绑定输出缓冲区链表的删除和复制函数 */
     listSetFreeMethod(c->reply,freeClientReplyValue);
     listSetDupMethod(c->reply,dupClientReplyValue);
     c->btype = BLOCKED_NONE;
@@ -165,6 +190,7 @@ client *createClient(connection *conn) {
     c->auth_module = NULL;
     listSetFreeMethod(c->pubsub_patterns,decrRefCountVoid);
     listSetMatchMethod(c->pubsub_patterns,listMatchObjects);
+    /* 只有conn不是null的情况下(即不是伪客户端)，才将c加到全局客户端链表中 */
     if (conn) linkClient(c);
     initClientMultiState(c);
     return c;
@@ -177,6 +203,7 @@ client *createClient(connection *conn) {
  * handleClientsWithPendingWrites() function).
  * If we fail and there is more data to write, compared to what the socket
  * buffers can hold, then we'll really install the handler. */
+/* TODO */
 void clientInstallWriteHandler(client *c) {
     /* Schedule the client to write the output buffers to the socket only
      * if not already done and, for slaves, if the slave can actually receive
@@ -191,6 +218,7 @@ void clientInstallWriteHandler(client *c) {
          * loop, we can try to directly write to the client sockets avoiding
          * a system call. We'll only really install the write handler if
          * we'll not be able to write the whole reply at once. */
+        /* 该函数的核心操作：添加CLIENT_PENDING_WRITE标志；将c添加到server.clients_pending_write链表头部 */
         c->flags |= CLIENT_PENDING_WRITE;
         listAddNodeHead(server.clients_pending_write,c);
     }
@@ -221,20 +249,25 @@ void clientInstallWriteHandler(client *c) {
 int prepareClientToWrite(client *c) {
     /* If it's the Lua client we always return ok without installing any
      * handler since there is no socket at all. */
+    /* 如果这个客户端是Lua脚本客户端，总是返回ok，而不执行安装处理函数的操作因为这样客户端没有对应的socket */
     if (c->flags & (CLIENT_LUA|CLIENT_MODULE)) return C_OK;
 
     /* CLIENT REPLY OFF / SKIP handling: don't send replies. */
+    /* 客户端关闭/跳过回复处理：不发送回复，返回err */
     if (c->flags & (CLIENT_REPLY_OFF|CLIENT_REPLY_SKIP)) return C_ERR;
 
     /* Masters don't receive replies, unless CLIENT_MASTER_FORCE_REPLY flag
      * is set. */
+    /* Masters客户端不接受回复，除非CLIENT_MASTER_FORCE_REPLY标志位被设置 */
     if ((c->flags & CLIENT_MASTER) &&
         !(c->flags & CLIENT_MASTER_FORCE_REPLY)) return C_ERR;
 
+    /* 用于AOF加载的伪客户端，直接返回err*/
     if (!c->conn) return C_ERR; /* Fake client for AOF loading. */
 
     /* Schedule the client to write the output buffers to the socket, unless
      * it should already be setup to do so (it has already pending data). */
+    /* 将该客户端加入代写链表中，除非它已经被设置成这样了（已经有待写的数据了） */
     if (!clientHasPendingReplies(c)) clientInstallWriteHandler(c);
 
     /* Authorize the caller to queue in the output buffer of this client. */
@@ -246,22 +279,29 @@ int prepareClientToWrite(client *c) {
  * -------------------------------------------------------------------------- */
 
 int _addReplyToBuffer(client *c, const char *s, size_t len) {
+    /* c->buf中还有多少剩余空间 */
     size_t available = sizeof(c->buf)-c->bufpos;
 
+    /* 如果设置了CLIENT_CLOSE_AFTER_REPLY这个标志，那么直接返回C_OK */
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return C_OK;
 
     /* If there already are entries in the reply list, we cannot
      * add anything more to the static buffer. */
+    /* 如果回复链表中已经有条目了，我们不能在静态缓冲区再添加任何东西了，返回err */
     if (listLength(c->reply) > 0) return C_ERR;
 
     /* Check that the buffer has enough space available for this string. */
+    /* 检查是否有足够的空间存储这个字符串 */
     if (len > available) return C_ERR;
 
+    /* 将字符串拷贝到c->buf中 */
     memcpy(c->buf+c->bufpos,s,len);
+    /* 位置指针加len */
     c->bufpos+=len;
     return C_OK;
 }
 
+/* 将字符串s添加到c->reply链表的最后一个节点中，如果最后一个节点的大小不够那么就创建一个新的节点 */
 void _addReplyProtoToList(client *c, const char *s, size_t len) {
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return;
 
@@ -273,6 +313,7 @@ void _addReplyProtoToList(client *c, const char *s, size_t len) {
      * fo fill it later, when the size of the bulk length is set. */
 
     /* Append to tail string when possible. */
+    /* 如果tail不是NULL，尝试将字符串添加到tail节点中 */
     if (tail) {
         /* Copy the part we can fit into the tail, and leave the rest for a
          * new node */
@@ -286,6 +327,7 @@ void _addReplyProtoToList(client *c, const char *s, size_t len) {
     if (len) {
         /* Create a new node, make sure it is allocated to at
          * least PROTO_REPLY_CHUNK_BYTES */
+        /* 创建一个新节点，确保最少分配PROTO_REPLY_CHUNK_BYTES个字节 */
         size_t size = len < PROTO_REPLY_CHUNK_BYTES? PROTO_REPLY_CHUNK_BYTES: len;
         tail = zmalloc(size + sizeof(clientReplyBlock));
         /* take over the allocation's internal fragmentation */
@@ -304,6 +346,7 @@ void _addReplyProtoToList(client *c, const char *s, size_t len) {
  * -------------------------------------------------------------------------- */
 
 /* Add the object 'obj' string representation to the client output buffer. */
+/* 将字符串对象写入到客户端输出缓冲区中 */
 void addReply(client *c, robj *obj) {
     if (prepareClientToWrite(c) != C_OK) return;
 
@@ -325,6 +368,7 @@ void addReply(client *c, robj *obj) {
 
 /* Add the SDS 's' string to the client output buffer, as a side effect
  * the SDS string is freed. */
+/* 将sds字符串s写入客户端输出缓冲区中，这个sds字符串的空间会被释放掉。 */
 void addReplySds(client *c, sds s) {
     if (prepareClientToWrite(c) != C_OK) {
         /* The caller expects the sds to be free'd. */
@@ -344,6 +388,7 @@ void addReplySds(client *c, sds s) {
  * if not needed. The object will only be created by calling
  * _addReplyProtoToList() if we fail to extend the existing tail object
  * in the list of objects. */
+/* 将字符串s写入输出缓冲区中，这个函数不需要创建sds对象或者redis对象，所以比较高效 */
 void addReplyProto(client *c, const char *s, size_t len) {
     if (prepareClientToWrite(c) != C_OK) return;
     if (_addReplyToBuffer(c,s,len) != C_OK)
@@ -351,7 +396,7 @@ void addReplyProto(client *c, const char *s, size_t len) {
 }
 
 /* Low level function called by the addReplyError...() functions.
- * It emits the protocol for a Redis error, in the form:
+ * It emits(发出) the protocol for a Redis error, in the form:
  *
  * -ERRORCODE Error Message<CR><LF>
  *
@@ -359,15 +404,22 @@ void addReplyProto(client *c, const char *s, size_t len) {
  * code provided is used, otherwise the string "-ERR " for the generic
  * error code is automatically added.
  * Note that 's' must NOT end with \r\n. */
+/* 这个函数以以下形式发送redis错误：
+ * -ERRORCODE Error Message<CR><LF>
+ * 
+ * 如何错误码已经包含在字符串s中，那么就不会再额外添加错误码；否则就会在错误码前面加上字符串
+ * "-ERR"。但是注意字符串s不能以"\r\n"结束。 */
 void addReplyErrorLength(client *c, const char *s, size_t len) {
     /* If the string already starts with "-..." then the error code
      * is provided by the caller. Otherwise we use "-ERR". */
+    /* 如果字符串以'-'开头，那么错误码由调用者提供；否则使用"-ERR". */
     if (!len || s[0] != '-') addReplyProto(c,"-ERR ",5);
     addReplyProto(c,s,len);
     addReplyProto(c,"\r\n",2);
 }
 
 /* Do some actions after an error reply was sent (Log if needed, updates stats, etc.) */
+/*  */
 void afterErrorReply(client *c, const char *s, size_t len) {
     /* Sometimes it could be normal that a slave replies to a master with
      * an error and this function gets called. Actually the error will never
@@ -410,6 +462,8 @@ void afterErrorReply(client *c, const char *s, size_t len) {
 
 /* The 'err' object is expected to start with -ERRORCODE and end with \r\n.
  * Unlike addReplyErrorSds and others alike which rely on addReplyErrorLength. */
+/* err这个对象应该以"-ERRORCODE"开头，并且以"\r\n"结束
+ *  */
 void addReplyErrorObject(client *c, robj *err) {
     addReply(c, err);
     afterErrorReply(c, err->ptr, sdslen(err->ptr)-2); /* Ignore trailing \r\n */
@@ -835,17 +889,26 @@ void AddReplyFromClient(client *dst, client *src) {
 /* Copy 'src' client output buffers into 'dst' client output buffers.
  * The function takes care of freeing the old output buffers of the
  * destination client. */
+/* 将客户端src中的输出缓冲区拷贝到客户端dst的输出缓冲区中。
+ * 这个函数首先释放掉客户端dst的旧输出缓冲区 */
 void copyClientOutputBuffer(client *dst, client *src) {
+    /* 释放掉旧的输出缓冲区空间 */
     listRelease(dst->reply);
     dst->sentlen = 0;
+
+    /* 复制回复链表 */
     dst->reply = listDup(src->reply);
+
+    /* 复制内容到回复buf中 */
     memcpy(dst->buf,src->buf,src->bufpos);
+    /* 同步偏移量和字节数 */
     dst->bufpos = src->bufpos;
     dst->reply_bytes = src->reply_bytes;
 }
 
 /* Return true if the specified client has pending reply buffers to write to
  * the socket. */
+/* 客户端是否待回复（c->buf是否为空或者c->reply是不是空链表） */
 int clientHasPendingReplies(client *c) {
     return c->bufpos || listLength(c->reply);
 }
@@ -853,6 +916,7 @@ int clientHasPendingReplies(client *c) {
 void clientAcceptHandler(connection *conn) {
     client *c = connGetPrivateData(conn);
 
+    /* 连接状态为未连接 */
     if (connGetState(conn) != CONN_STATE_CONNECTED) {
         serverLog(LL_WARNING,
                 "Error accepting a client connection: %s",
@@ -865,6 +929,7 @@ void clientAcceptHandler(connection *conn) {
      * is no password set, nor a specific interface is bound, we don't accept
      * requests from non loopback interfaces. Instead we try to explain the
      * user what to do to fix it if needed. */
+    /* 如果服务器运行在保护模式且没有设置密码且没有网络连接，我们不接受非回环接口的请求。 */
     if (server.protected_mode &&
         server.bindaddr_count == 0 &&
         DefaultUser->flags & USER_FLAG_NOPASS &&
@@ -1042,6 +1107,7 @@ void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 }
 
+/* 清除掉客户端参数 */
 static void freeClientArgv(client *c) {
     int j;
     for (j = 0; j < c->argc; j++)
@@ -1053,6 +1119,7 @@ static void freeClientArgv(client *c) {
 /* Close all the slaves connections. This is useful in chained replication
  * when we resync with our own master and want to force all our slaves to
  * resync with us as well. */
+/* 关闭所有slave连接。 释放掉所有的slave客户端 */
 void disconnectSlaves(void) {
     listIter li;
     listNode *ln;
@@ -1065,6 +1132,8 @@ void disconnectSlaves(void) {
 /* Remove the specified client from global lists where the client could
  * be referenced, not including the Pub/Sub channels.
  * This is used by freeClient() and replicationCacheMaster(). */
+/* 从全局客户端链表中移除特定的客户端，不包括Pub/Sub频道.和linkClient()函数做相反的事情
+ * 这个函数被freeClient()和replicationCacheMaster()两个函数调用 */
 void unlinkClient(client *c) {
     listNode *ln;
 
@@ -1131,17 +1200,21 @@ void unlinkClient(client *c) {
     if (c->flags & CLIENT_TRACKING) disableTracking(c);
 }
 
+/* 释放掉一个客户端：释放空间，断开连接，移除客户端 */
+/* TODO: */
 void freeClient(client *c) {
     listNode *ln;
 
     /* If a client is protected, yet we need to free it right now, make sure
-     * to at least use asynchronous freeing. */
+     * to at least use asynchronous（异步） freeing. */
+    /* 如果这是一个受包括的客户端并且需要立马释放，确保至少使用异步释放。 */
     if (c->flags & CLIENT_PROTECTED) {
         freeClientAsync(c);
         return;
     }
 
     /* For connected clients, call the disconnection event of modules hooks. */
+    /* 对于已经连接的客户端，调用断开连接事件 */
     if (c->conn) {
         moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
                               REDISMODULE_SUBEVENT_CLIENT_CHANGE_DISCONNECTED,
@@ -1149,15 +1222,20 @@ void freeClient(client *c) {
     }
 
     /* Notify module system that this client auth status changed. */
+    /* 通知模块系统这个客户端的授权状态已经发生了改变 */
     moduleNotifyUserChanged(c);
 
     /* If this client was scheduled for async freeing we need to remove it
      * from the queue. Note that we need to do this here, because later
      * we may call replicationCacheMaster() and the client should already
      * be removed from the list of clients to free. */
+    /* 如果这个客户端已经设置好要进行异步释放我们需要从队列中移除它。
+     * 注意我们需要在调用replicationCacheMaster()这个函数之前执行下面的操作 */
     if (c->flags & CLIENT_CLOSE_ASAP) {
+        /* 查找客户端c所在的节点 */
         ln = listSearchKey(server.clients_to_close,c);
         serverAssert(ln != NULL);
+        /* 从待关闭的客户端链表中移除这个节点 */
         listDelNode(server.clients_to_close,ln);
     }
 
@@ -1255,19 +1333,27 @@ void freeClient(client *c) {
  * This function is useful when we need to terminate a client but we are in
  * a context where calling freeClient() is not possible, because the client
  * should be valid for the continuation of the flow of the program. */
+/* 在serverCron()函数中预定一个安全的时间来释放一个客户端。
+ * 当我们需要中止一个客户端但是我们处于一个无法调用freeClient()函数的上下文中时使用这个函数。因为
+ * 这个客户端应该在执行程序流中有效。 */
 void freeClientAsync(client *c) {
     /* We need to handle concurrent access to the server.clients_to_close list
      * only in the freeClientAsync() function, since it's the only function that
      * may access the list while Redis uses I/O threads. All the other accesses
      * are in the context of the main thread while the other threads are
      * idle. */
+    /* 我们只需要在freeClientAsync()函数中处理对server.clients_to_close链表的并发访问。
+     * 因为这是redis在使用多io线程的时候唯一使用这个链表的函数；在其他的上下文的情况下只有
+     * 主线程才会使用这个函数，而其他的线程处于空闲状态。 */
     if (c->flags & CLIENT_CLOSE_ASAP || c->flags & CLIENT_LUA) return;
     c->flags |= CLIENT_CLOSE_ASAP;
     if (server.io_threads_num == 1) {
         /* no need to bother with locking if there's just one thread (the main thread) */
+        /* 如果只有一个线程（主线程），那么没有必要使用互斥锁 */
         listAddNodeTail(server.clients_to_close,c);
         return;
     }
+    /* 这种情况下存在多个io线程，那么就需要加互斥锁。 */
     static pthread_mutex_t async_free_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&async_free_queue_mutex);
     listAddNodeTail(server.clients_to_close,c);
@@ -1276,6 +1362,7 @@ void freeClientAsync(client *c) {
 
 /* Free the clietns marked as CLOSE_ASAP, return the number of clients
  * freed. */
+/* 释放掉标记为CLOSE_ASAP的客户端，返回释放的个数 */
 int freeClientsInAsyncFreeQueue(void) {
     int freed = 0;
     listIter li;
@@ -1285,10 +1372,14 @@ int freeClientsInAsyncFreeQueue(void) {
     while ((ln = listNext(&li)) != NULL) {
         client *c = listNodeValue(ln);
 
+        /* 如果标记为受保护的客户端，那么先跳过不释放 */
         if (c->flags & CLIENT_PROTECTED) continue;
 
+        /* 去掉CLIENT_CLOSE_ASAP标志 */
         c->flags &= ~CLIENT_CLOSE_ASAP;
+        /* 释放客户端 */
         freeClient(c);
+        /* 从待关闭客户端链表中去掉释放的客户端 */
         listDelNode(server.clients_to_close,ln);
         freed++;
     }
@@ -1298,6 +1389,7 @@ int freeClientsInAsyncFreeQueue(void) {
 /* Return a client by ID, or NULL if the client ID is not in the set
  * of registered clients. Note that "fake clients", created with -1 as FD,
  * are not registered clients. */
+/* 根据提供的ID返回客户端 */
 client *lookupClientByID(uint64_t id) {
     id = htonu64(id);
     client *c = raxFind(server.clients_index,(unsigned char*)&id,sizeof(id));
@@ -1311,9 +1403,16 @@ client *lookupClientByID(uint64_t id) {
  *
  * This function is called by threads, but always with handler_installed
  * set to 0. So when handler_installed is set to 0 the function must be
- * thread safe. */
+ * thread safe. */     
+/* 向客户端的输出缓冲区写入数据。
+ * 如果在调用这个函数之后客户端依然有效那么返回C_OK，如果因为有错误而导致客户端被释放那么返回C_ERR
+ * 如果设置了handler_installed，那么这个函数尝试清除掉写事务
+ * 
+ * 当这个函数被多线程访问的时候，handler_installed总是设为0；所以当handler_installed被设为0的时候
+ * 该函数必须保证线程安全 */                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
 int writeToClient(client *c, int handler_installed) {
     /* Update total number of writes on server */
+    /* 服务器执行写的总次数 */
     server.stat_total_writes_processed++;
 
     ssize_t nwritten = 0, totwritten = 0;
@@ -1412,15 +1511,18 @@ int writeToClient(client *c, int handler_installed) {
 }
 
 /* Write event handler. Just send data to the client. */
+/* 写事务处理函数，发送数据到客户端 */
 void sendReplyToClient(connection *conn) {
     client *c = connGetPrivateData(conn);
     writeToClient(c,1);
 }
 
+/* Todo：to be continued. */
 /* This function is called just before entering the event loop, in the hope
  * we can just write the replies to the client output buffer without any
  * need to use a syscall in order to install the writable event handler,
  * get it called, and so forth. */
+/*  */
 int handleClientsWithPendingWrites(void) {
     listIter li;
     listNode *ln;

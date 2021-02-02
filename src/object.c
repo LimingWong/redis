@@ -49,6 +49,7 @@ robj *createObject(int type, void *ptr) {
 
     /* Set the LRU to the current lruclock (minutes resolution), or
      * alternatively the LFU counter. */
+    /* 如果收回策略使LFU，那么lru初始化为次数；否则初始化LRU时钟（精度为分钟）*/
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
@@ -162,7 +163,7 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     {
         /* If the maxmemory policy permits, we can still return shared integers
          * even if valueobj is true. */
-        /* 如果最大内存策略允许，我们仍然可以返回一个共享的整型，即使valueobj为true */
+        /* 如果最大内存策略允许（即没有设置内存回收策略），我们仍然可以返回一个共享的整型，即使valueobj为true */
         valueobj = 0;
     }
 
@@ -195,8 +196,8 @@ robj *createStringObjectFromLongLong(long long value) {
  * object when LFU/LRU info are needed, that is, when the object is used
  * as a value in the key space, and Redis is configured to evict based on
  * LFU/LRU. */
- /* 上上个函数的包装函数，尽量避免共享对象如果LFU/LRU信息被需要的时候，也就是当对象作为键空间的值的时候
-  * redis被配置为按照LFU/LRU回收策略回收 */
+ /* 上上个函数的包装函数，如何需要LFU/LRU信息被需要，那么就应该避免创建共享对象，
+  * 因为LRU/LRU需要私有的lru信息，也就是当对象作为键空间的值的时候，redis被配置为按照LFU/LRU回收策略回收 */
 robj *createStringObjectFromLongLongForValue(long long value) {
     return createStringObjectFromLongLongWithOptions(value,1);
 }
@@ -305,7 +306,7 @@ robj *createZsetObject(void) {
     return o;
 }
 
-/* 床zsetziplist对象，type为OBJ_ZSET，encoding为OBJ_ENCODINGZ_ZIPLIST */
+/* 创建zsetziplist对象，type为OBJ_ZSET，encoding为OBJ_ENCODINGZ_ZIPLIST */
 robj *createZsetZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_ZSET,zl);
@@ -474,6 +475,7 @@ int isSdsRepresentableAsLongLong(sds s, long long *llval) {
     return string2ll(s,sdslen(s),llval) ? C_OK : C_ERR;
 }
 
+/* ----【只有声明和定义，从未使用过的函数】----- */
 /* 字符串对象能够表示为longlong类型，如果能则将值存储在llval中并返回C_OK;否则返回C_ERR. */
 int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
@@ -485,10 +487,13 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     }
 }
 
+/* ------【被其他两个地方使用】----- */
 /* Optimize the SDS string inside the string object to require little space,
  * in case there is more than 10% of free space at the end of the SDS
  * string. This happens because SDS strings tend to overallocate to avoid
  * wasting too much time in allocations when appending to the string. */
+/* 优化字符串对象中的sds 字符串的空间，以避免在sds字符串的末尾有超过10%的空闲空间
+ * 造成这种情况的原因是sds字符串会多分配内存空间以免每次在字符串中添加元素时都要分配空间 */
 void trimStringObjectIfNeeded(robj *o) {
     if (o->encoding == OBJ_ENCODING_RAW &&
         sdsavail(o->ptr) > sdslen(o->ptr)/10)
@@ -498,6 +503,7 @@ void trimStringObjectIfNeeded(robj *o) {
 }
 
 /* Try to encode a string object in order to save space */
+/* 为了省空间，尝试编码字符串对象 */
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
@@ -507,27 +513,35 @@ robj *tryObjectEncoding(robj *o) {
      * in this function. Other types use encoded memory efficient
      * representations but are handled by the commands implementing
      * the type. */
+    /* 确保这是一个字符串对象，我们在这个函数中只编码这一种类型。其他类型使用内存
+     * 高效的表示方式但是由实现对应类型的命令处理。 */
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
 
     /* We try some specialized encoding only for objects that are
      * RAW or EMBSTR encoded, in other words objects that are still
      * in represented by an actually array of chars. */
+    /* 我们尝试用用RAW或者EMBSTR编码方式的字符串对象，换句话说，对象仍然由字符数组来表示。 */
     if (!sdsEncodedObject(o)) return o;
 
     /* It's not safe to encode shared objects: shared objects can be shared
      * everywhere in the "object space" of Redis and may end in places where
      * they are not handled. We handle them only as values in the keyspace. */
+    /* 压缩共享字符串对象不安全： 共享对象可能在redis的对象空间中任何一个地方被共享。
+     * 对于共享对象，我们只作为在键空间中的值处理*/
      if (o->refcount > 1) return o;
 
     /* Check if we can represent this string as a long integer.
      * Note that we are sure that a string larger than 20 chars is not
      * representable as a 32 nor 64 bit integer. */
+    /* 检查这个字符串能否表示为一个long 型整数
+     * 注意一个超过20个字符的字符串不能表示为32位或者64位的整数 */
     len = sdslen(s);
     if (len <= 20 && string2l(s,len,&value)) {
         /* This object is encodable as a long. Try to use a shared object.
          * Note that we avoid using shared integers when maxmemory is used
          * because every object needs to have a private LRU field for the LRU
          * algorithm to work well. */
+        /* 这个对象可以编码为整型数。尝试i使用共享对象。 */
         if ((server.maxmemory == 0 ||
             !(server.maxmemory_policy & MAXMEMORY_FLAG_NO_SHARED_INTEGERS)) &&
             value >= 0 &&
@@ -538,11 +552,14 @@ robj *tryObjectEncoding(robj *o) {
             return shared.integers[value];
         } else {
             if (o->encoding == OBJ_ENCODING_RAW) {
+                /* RAW编码的将数据存储在指针中 */
                 sdsfree(o->ptr);
+                /* 修改编码 */
                 o->encoding = OBJ_ENCODING_INT;
                 o->ptr = (void*) value;
                 return o;
             } else if (o->encoding == OBJ_ENCODING_EMBSTR) {
+                /* EMBSTR编码的创建一个新的对象，因为EMBSTR编码的对象后面又额外的空间，我们只需要将数据存储在指针变量中即可 */
                 decrRefCount(o);
                 return createStringObjectFromLongLongForValue(value);
             }
@@ -553,6 +570,7 @@ robj *tryObjectEncoding(robj *o) {
      * try the EMBSTR encoding which is more efficient.
      * In this representation the object and the SDS string are allocated
      * in the same chunk of memory to save space and cache misses. */
+    /* 如果字符串很小并且使用RAW编码，尝试使用EMBSTR编码 */
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {
         robj *emb;
 
@@ -571,14 +589,18 @@ robj *tryObjectEncoding(robj *o) {
      * We do that only for relatively large strings as this branch
      * is only entered if the length of the string is greater than
      * OBJ_ENCODING_EMBSTR_SIZE_LIMIT. */
+    /* 到这一步说明无法压缩该字符串对象，那么尝试去掉sds字符串后面的空间 */
     trimStringObjectIfNeeded(o);
 
     /* Return the original object. */
+    /* 返回原始对象 */
     return o;
 }
 
+/* ------【使用频率很高】----- */
 /* Get a decoded version of an encoded object (returned as a new object).
  * If the object is already raw-encoded just increment the ref count. */
+/* 将一个压缩版对象解压并返回一个新的对象，如果对象已经是RAW编码，只需要增加它的引用数量后返回 */
 robj *getDecodedObject(robj *o) {
     robj *dec;
 
@@ -607,7 +629,7 @@ robj *getDecodedObject(robj *o) {
 
 #define REDIS_COMPARE_BINARY (1<<0)
 #define REDIS_COMPARE_COLL (1<<1)
-
+/* 比较两个字符串对象 */
 int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
     serverAssertWithInfo(NULL,a,a->type == OBJ_STRING && b->type == OBJ_STRING);
     char bufa[128], bufb[128], *astr, *bstr;
@@ -641,11 +663,13 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
 }
 
 /* Wrapper for compareStringObjectsWithFlags() using binary comparison. */
+/* 二进制比较 */
 int compareStringObjects(robj *a, robj *b) {
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_BINARY);
 }
 
 /* Wrapper for compareStringObjectsWithFlags() using collation. */
+/* 比较字符串 */
 int collateStringObjects(robj *a, robj *b) {
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_COLL);
 }
@@ -661,7 +685,7 @@ int equalStringObjects(robj *a, robj *b) {
         b->encoding == OBJ_ENCODING_INT){
         /* If both strings are integer encoded just check if the stored
          * long is the same. */
-        /* 如果两个字符串都是使用整型数编码，只需要检测存储的指针是不是指向同一个变量。 */
+        /* 如果两个字符串都是使用整型数编码，只需要检测存储的指针是不是指向同一个变量。这是因为这种编码的数据存储在指针中 */
         return a->ptr == b->ptr;
     } else {
         return compareStringObjects(a,b) == 0;

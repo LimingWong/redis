@@ -237,7 +237,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define CLIENT_PREVENT_REPL_PROP (1<<20)  /* Don't propagate to slaves. */
 #define CLIENT_PREVENT_PROP (CLIENT_PREVENT_AOF_PROP|CLIENT_PREVENT_REPL_PROP)
 #define CLIENT_PENDING_WRITE (1<<21) /* Client has output to send but a write
-                                        handler is yet not installed. */
+                                        handler is yet not installed. 待写客户端*/
 #define CLIENT_REPLY_OFF (1<<22)   /* Don't send replies to client. */
 #define CLIENT_REPLY_SKIP_NEXT (1<<23)  /* Set CLIENT_REPLY_SKIP for next cmd */
 #define CLIENT_REPLY_SKIP (1<<24)  /* Don't send just this reply. */
@@ -292,6 +292,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 
 /* Slave replication state. Used in server.repl_state for slaves to remember
  * what to do next. */
+/* 从服务器复制状态。server.repl_state为了从复制服务器直到下一步该做什么而记录了该状态。 */
 #define REPL_STATE_NONE 0 /* No active replication */
 #define REPL_STATE_CONNECT 1 /* Must connect to master */
 #define REPL_STATE_CONNECTING 2 /* Connecting to master */
@@ -379,20 +380,21 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 /* Redis maxmemory strategies. Instead of using just incremental number
  * for this defines, we use a set of flags so that testing for certain
  * properties common to multiple policies is faster. */
+/* redis最大内存策略。在不使用递增数字定义而是用一系列flag，这样便于测试特定的特性。 */
 #define MAXMEMORY_FLAG_LRU (1<<0)
 #define MAXMEMORY_FLAG_LFU (1<<1)
 #define MAXMEMORY_FLAG_ALLKEYS (1<<2)
 #define MAXMEMORY_FLAG_NO_SHARED_INTEGERS \
     (MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_LFU)
 
-#define MAXMEMORY_VOLATILE_LRU ((0<<8)|MAXMEMORY_FLAG_LRU)
-#define MAXMEMORY_VOLATILE_LFU ((1<<8)|MAXMEMORY_FLAG_LFU)
-#define MAXMEMORY_VOLATILE_TTL (2<<8)
-#define MAXMEMORY_VOLATILE_RANDOM (3<<8)
-#define MAXMEMORY_ALLKEYS_LRU ((4<<8)|MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_ALLKEYS)
-#define MAXMEMORY_ALLKEYS_LFU ((5<<8)|MAXMEMORY_FLAG_LFU|MAXMEMORY_FLAG_ALLKEYS)
-#define MAXMEMORY_ALLKEYS_RANDOM ((6<<8)|MAXMEMORY_FLAG_ALLKEYS)
-#define MAXMEMORY_NO_EVICTION (7<<8)
+#define MAXMEMORY_VOLATILE_LRU ((0<<8)|MAXMEMORY_FLAG_LRU)                          //   00000001
+#define MAXMEMORY_VOLATILE_LFU ((1<<8)|MAXMEMORY_FLAG_LFU)                          // 1 00000010
+#define MAXMEMORY_VOLATILE_TTL (2<<8)                                               //10 00000000
+#define MAXMEMORY_VOLATILE_RANDOM (3<<8)                                            //11 00000000
+#define MAXMEMORY_ALLKEYS_LRU ((4<<8)|MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_ALLKEYS)   //100 00000101
+#define MAXMEMORY_ALLKEYS_LFU ((5<<8)|MAXMEMORY_FLAG_LFU|MAXMEMORY_FLAG_ALLKEYS)   //101 00000110
+#define MAXMEMORY_ALLKEYS_RANDOM ((6<<8)|MAXMEMORY_FLAG_ALLKEYS)                   //110 00000100
+#define MAXMEMORY_NO_EVICTION (7<<8)                                               //111 00000000
 
 /* Units */
 #define UNIT_SECONDS 0
@@ -642,6 +644,7 @@ char *getObjectTypeName(robj*);
  * Note that this macro is taken near the structure definition to make sure
  * we'll update it when the structure is changed, to avoid bugs like
  * bug #85 introduced exactly in this way. */
+/* 这是一个用来初始化分配在栈上的对象的宏函数，注意此时的refcount为OBJ_STATIC_REFCOUNT*/
 #define initStaticStringObject(_var,_ptr) do { \
     _var.refcount = OBJ_STATIC_REFCOUNT; \
     _var.type = OBJ_STRING; \
@@ -653,6 +656,8 @@ struct evictionPoolEntry; /* Defined in evict.c */
 
 /* This structure is used in order to represent the output buffer of a client,
  * which is actually a linked list of blocks like that, that is: client->reply. */
+/* 这个结构体用于表示一个客户端的输出缓冲区
+ * 客户端的输出缓冲区实际上是一个链表（client->reply），链表的节点的数据指针指向这样一个结构体数据 */
 typedef struct clientReplyBlock {
     size_t size, used;
     char buf[];
@@ -681,15 +686,17 @@ typedef struct multiCmd {
 } multiCmd;
 
 typedef struct multiState {
+    /* MULTI命令数组 */
     multiCmd *commands;     /* Array of MULTI commands */
+    /* MULTI命令计数 */
     int count;              /* Total number of MULTI commands */
-    int cmd_flags;          /* The accumulated command flags OR-ed together.
+    int cmd_flags;          /* The accumulated（积累的） command flags OR-ed together.
                                So if at least a command has a given flag, it
                                will be set in this field. */
     int cmd_inv_flags;      /* Same as cmd_flags, OR-ing the ~flags. so that it
                                is possible to know if all the commands have a
                                certain flag. */
-    int minreplicas;        /* MINREPLICAS for synchronous replication */
+    int minreplicas;        /* MINREPLICAS for synchronous（同步的） replication */
     time_t minreplicas_timeout; /* MINREPLICAS timeout as unixtime. */
 } multiState;
 
@@ -810,7 +817,9 @@ typedef struct client {
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
     int multibulklen;       /* Number of multi bulk arguments left to read. */
     long bulklen;           /* Length of bulk argument in multi bulk request. */
+    /* 存储发送到客户端的数据的一个结构体 */
     list *reply;            /* List of reply objects to send to the client. */
+    /* reply list的大小，一共有多少个字节 */
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */

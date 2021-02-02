@@ -116,7 +116,7 @@ typedef struct aeEventLoop {
     aeFileEvent *events; /* Registered events；已注册的文件事务 */
     aeFiredEvent *fired; /* Fired events；已就绪的事务 */
     aeTimeEvent *timeEventHead;  /* 时间事务的头节点（时间事务构成一个双向链表） */
-    int stop;  /* 事件处理其的开关 */
+    int stop;  /* 事件处理器开关 */
     void *apidata; /* This is used for polling API specific data；这个指针是指向轮询api的aeApiState结构数据 */
     aeBeforeSleepProc *beforesleep; /* 处理事务前要执行的函数 */
     aeBeforeSleepProc *aftersleep; /* 处理事务后要执行的函数 */

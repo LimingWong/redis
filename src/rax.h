@@ -38,7 +38,7 @@
  * word. When the node represents a key inside the radix tree, we write it
  * between [], otherwise it is written between ().
  *
- * This is the vanilla representation:
+ * This is the vanilla(普通的) representation:
  *
  *              (f) ""
  *                \

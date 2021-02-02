@@ -1754,9 +1754,9 @@ void databasesCron(void) {
  * such info only when calling this function from serverCron() but not when
  * calling it from call(). */
 void updateCachedTime(int update_daylight_info) {
-    server.ustime = ustime();
-    server.mstime = server.ustime / 1000;
-    server.unixtime = server.mstime / 1000;
+    server.ustime = ustime();              // us
+    server.mstime = server.ustime / 1000;  // ms 
+    server.unixtime = server.mstime / 1000;//  s
 
     /* To get information about daylight saving time, we need to call
      * localtime_r and cache the result. However calling localtime_r in this
