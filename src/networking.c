@@ -916,11 +916,12 @@ int clientHasPendingReplies(client *c) {
 void clientAcceptHandler(connection *conn) {
     client *c = connGetPrivateData(conn);
 
-    /* 连接状态为未连接 */
+    /* 连接状态为未连接，必须在状态变为CONN_STATE_CONNECTED之后才可往下执行。 */
     if (connGetState(conn) != CONN_STATE_CONNECTED) {
         serverLog(LL_WARNING,
                 "Error accepting a client connection: %s",
                 connGetLastError(conn));
+        /* 异步释放掉这个客户端 */
         freeClientAsync(c);
         return;
     }
@@ -929,16 +930,19 @@ void clientAcceptHandler(connection *conn) {
      * is no password set, nor a specific interface is bound, we don't accept
      * requests from non loopback interfaces. Instead we try to explain the
      * user what to do to fix it if needed. */
-    /* 如果服务器运行在保护模式且没有设置密码且没有网络连接，我们不接受非回环接口的请求。 */
+    /* 如果服务器运行在保护模式且没有设置密码且配置文件中并没有bind指定的网络接口，这种情况下下
+     * 不接受非回环接口的请求，只接受回环请求和unix域请求。 */
     if (server.protected_mode &&
         server.bindaddr_count == 0 &&
         DefaultUser->flags & USER_FLAG_NOPASS &&
         !(c->flags & CLIENT_UNIX_SOCKET))
     {
         char cip[NET_IP_STR_LEN+1] = { 0 };
+        /* 这里是获取conn连接对应的客户端的ip */
         connPeerToString(conn, cip, sizeof(cip)-1, NULL);
 
         if (strcmp(cip,"127.0.0.1") && strcmp(cip,"::1")) {
+            /* 这个连接请求不是回环请求 */
             char *err =
                 "-DENIED Redis is running in protected mode because protected "
                 "mode is enabled, no bind address was specified, no "
@@ -963,13 +967,17 @@ void clientAcceptHandler(connection *conn) {
             if (connWrite(c->conn,err,strlen(err)) == -1) {
                 /* Nothing to do, Just to avoid the warning... */
             }
+            /* 出错，被拒绝连接的数量加1 */
             server.stat_rejected_conn++;
+            /* 异步是放掉这个创建的客户端。 */
             freeClientAsync(c);
             return;
         }
     }
 
+    /* 服务器记录的已连接数量加1. */
     server.stat_numconnections++;
+    /* TODO：这是个嘛？ */
     moduleFireServerEvent(REDISMODULE_EVENT_CLIENT_CHANGE,
                           REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED,
                           c);
@@ -995,6 +1003,8 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
      * Admission control will happen before a client is created and connAccept()
      * called, because we don't want to even start transport-level negotiation
      * if rejected. */
+    /* 限制服务器在同一时间的连接数量
+     * 在创建一个客户端和调用connAccept()函数之前需要进行许可控制 */
     if (listLength(server.clients) + getClusterConnectionsCount()
         >= server.maxclients)
     {
@@ -1011,12 +1021,13 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
         if (connWrite(conn,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
-        server.stat_rejected_conn++;
+        server.stat_rejected_conn++;/* 统计被拒绝创建的连接。 */
         connClose(conn);
         return;
     }
 
     /* Create connection and client */
+    /* 创建客户端 */
     if ((c = createClient(conn)) == NULL) {
         serverLog(LL_WARNING,
             "Error registering fd event for the new client: %s (conn: %s)",
@@ -1027,6 +1038,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
     }
 
     /* Last chance to keep flags */
+    /* 客户端的flag。 */
     c->flags |= flags;
 
     /* Initiate accept.
@@ -1048,6 +1060,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
     }
 }
 
+/* 这是监听套接字的回调函数，如果有客户端试图与服务器建立连接，就会调用这个函数。 */
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int cport, cfd, max = MAX_ACCEPTS_PER_CALL;
     char cip[NET_IP_STR_LEN];
@@ -1056,6 +1069,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     UNUSED(privdata);
 
     while(max--) {
+        /* 这是accept函数的装饰函数，这里服务器开始接受连接，最多接受1000个连接 */
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
@@ -1064,6 +1078,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
             return;
         }
         serverLog(LL_VERBOSE,"Accepted %s:%d", cip, cport);
+        /* 成功建立连接之后，调用下面的函数创建客户端，cfd是与客户端对应的已连接文件描述符 */
         acceptCommonHandler(connCreateAcceptedSocket(cfd),0,cip);
     }
 }

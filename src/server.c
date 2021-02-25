@@ -69,7 +69,7 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /*================================= Globals ================================= */
 
 /* Global vars */
-struct redisServer server; /* Server global state */
+struct redisServer server; /* Server globfal state */
 volatile unsigned long lru_clock; /* Server global current LRU time. */
 
 /* Our command table.
@@ -2979,6 +2979,7 @@ void initServer(void) {
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
     /* 创建一系列文件事件用于接收TCP域和UNIX域（local）的连接。 */
+    /* 这里主要是为监听套接字创建一个文件事件，绑定回调函数，这个回调函数创建客户端 */
     for (j = 0; j < server.ipfd_count; j++) {
         /*  */
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,

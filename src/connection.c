@@ -92,6 +92,13 @@ connection *connCreateSocket() {
  * is not in an error state (which is not possible for a socket connection,
  * but could but possible with other protocols).
  */
+/* 为一个已连接的文件描述符创建一个套接字类型的连接。
+ * 
+ * 这个套接字在调用connAccept()之前都还没有准备好进行io，这个函数会触发connection层面的accept处理函数
+ * 
+ * 这个函数的调用者应该使用connGetState()函数验证所创建的连接没有处于错误状态（对于一个套接字类型的连接来说不可能，
+ * 但是对于其他协议是有可能的。）
+ *  */
 connection *connCreateAcceptedSocket(int fd) {
     connection *conn = connCreateSocket();
     conn->fd = fd;
@@ -185,14 +192,15 @@ static int connSocketRead(connection *conn, void *buf, size_t buf_len) {
 
     return ret;
 }
-
+ 
 static int connSocketAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
     int ret = C_OK;
 
     if (conn->state != CONN_STATE_ACCEPTING) return C_ERR;
-    conn->state = CONN_STATE_CONNECTED;
+    conn->state = CONN_STATE_CONNECTED;/* 到这里，连接的状态从CONN_STATE_ACCEPTING变成CONN_STATE_CONNECTED。 */
 
     connIncrRefs(conn);
+    /* 在受保护的状态下调用回调函数。 */
     if (!callHandler(conn, accept_handler)) ret = C_ERR;
     connDecrRefs(conn);
 
