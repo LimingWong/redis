@@ -35,18 +35,21 @@
 
 #include <time.h>
 
+/* 用于事务处理中的函数返回状态 */
 #define AE_OK 0
 #define AE_ERR -1
 
-#define AE_NONE 0       /* No events registered. */
+/* 这是四个标志，用来标识aeFileEvent和aeFiredEvent结构体中的mask属性。可以进行或运算。 */
+#define AE_NONE 0       /* No events registered. 对应的描述符没有事件注册 */
 #define AE_READABLE 1   /* Fire when descriptor is readable. */
 #define AE_WRITABLE 2   /* Fire when descriptor is writable. */
 #define AE_BARRIER 4    /* With WRITABLE, never fire the event if the
                            READABLE event already fired in the same event
                            loop iteration. Useful when you want to persist
                            things to disk before sending replies, and want
-                           to do that in a group fashion. */
+                           to do that in a group fashion.*/
 
+/* 用来设置aeProcessEvents()函数的flags参数，表明要处理哪些类型的事件 */
 #define AE_FILE_EVENTS (1<<0)
 #define AE_TIME_EVENTS (1<<1)
 #define AE_ALL_EVENTS (AE_FILE_EVENTS|AE_TIME_EVENTS)
@@ -54,10 +57,12 @@
 #define AE_CALL_BEFORE_SLEEP (1<<3)
 #define AE_CALL_AFTER_SLEEP (1<<4)
 
-#define AE_NOMORE -1
-#define AE_DELETED_EVENT_ID -1
+#define AE_NOMORE -1 // 用于时间事件处理器的返回值，如果对应的时间事件不再需要执行，那么就返回该值
+#define AE_DELETED_EVENT_ID -1 //如果一个时间事件的id被标记为这个，那么程序会尝试删除这个时间事件
 
 /* Macros */
+/* 因为用到了不同的api，对于不同的api，相同接口函数的某些参数可能不会被使用，这种方式是为了避免出现警告信息。 */
+/* 这个宏没有使用过 */
 #define AE_NOTUSED(V) ((void) V)
 
 struct aeEventLoop;
@@ -66,7 +71,7 @@ struct aeEventLoop;
 
 /* 文件事件处理函数原型 */
 typedef void aeFileProc(struct aeEventLoop *eventLoop, int fd, void *clientData, int mask);
-/* 时间事件处理函数原型 */
+/* 时间事件处理函数原型: 函数的返回值是下一次执行是多少毫秒之后；如果这次执行之后不再执行，那么返回AE_NOMORE */
 typedef int aeTimeProc(struct aeEventLoop *eventLoop, long long id, void *clientData);
 /* 事务释放函数 */
 typedef void aeEventFinalizerProc(struct aeEventLoop *eventLoop, void *clientData);
@@ -74,7 +79,7 @@ typedef void aeEventFinalizerProc(struct aeEventLoop *eventLoop, void *clientDat
 typedef void aeBeforeSleepProc(struct aeEventLoop *eventLoop);
 
 /* File event structure */
-/* 文件事务结构体 */
+/* 文件事件结构体 */
 typedef struct aeFileEvent {
     int mask; /* one of AE_(READABLE|WRITABLE|BARRIER) */
     aeFileProc *rfileProc; /* 读事件（AE_READABLE)处理函数 */
@@ -100,7 +105,7 @@ typedef struct aeTimeEvent {
 } aeTimeEvent;
 
 /* A fired event */  
-/* 已经就绪的事务 */
+/* 已经就绪的文件事件 */
 typedef struct aeFiredEvent {
     int fd;   /* 已就绪的事务的文件描述符 */
     int mask; /* 已就绪的事务的操作 */
@@ -112,12 +117,15 @@ typedef struct aeEventLoop {
     int maxfd;   /* highest file descriptor currently registered；当前注册的最大的文件描述符 */
     int setsize; /* max number of file descriptors tracked；目前已追踪的文件描述符的最大数量*/
     long long timeEventNextId; /* 时间事务的下一个id */
-    time_t lastTime;     /* Used to detect system clock skew；用来检测系统时钟的偏移 */
+    
+    /* 这个时间是用来校准系统时钟用的。因为系统时钟出现偏差会导致时间事件不能正常处理
+     * 这个变量每次执行processTimeEvents()函数都会检查和更新 */
+    time_t lastTime;     /* Used to detect system clock skew */
     aeFileEvent *events; /* Registered events；已注册的文件事务 */
     aeFiredEvent *fired; /* Fired events；已就绪的事务 */
     aeTimeEvent *timeEventHead;  /* 时间事务的头节点（时间事务构成一个双向链表） */
     int stop;  /* 事件处理器开关 */
-    void *apidata; /* This is used for polling API specific data；这个指针是指向轮询api的aeApiState结构数据 */
+    void *apidata; /* This is used for polling API specific data；这个指针是指向轮询api的aeApiState结构数据，这个是实现IO多路复用的关键 */
     aeBeforeSleepProc *beforesleep; /* 处理事务前要执行的函数 */
     aeBeforeSleepProc *aftersleep; /* 处理事务后要执行的函数 */
     int flags;

@@ -1469,6 +1469,7 @@ usage:
     exit(exit_status);
 }
 
+/* 这是一个时间事件处理器（格式符合ae.h中的定义） */
 int showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     UNUSED(eventLoop);
     UNUSED(id);

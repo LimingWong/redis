@@ -85,6 +85,8 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
     /* 未指定处理事务前后的函数 */
     eventLoop->beforesleep = NULL;
     eventLoop->aftersleep = NULL;
+
+    /* 这个标志是用来记录AE_DONT_WAIT信号的，如果设置了，那么在执行io多路复用程序轮询时就不阻塞。 */
     eventLoop->flags = 0;
     /* 创建apiState，用eventLoop->apidata指向它 */
     if (aeApiCreate(eventLoop) == -1) goto err;
@@ -104,12 +106,13 @@ err:
 }
 
 /* Return the current set size. */
+/* 这个函数只在config.c中调用了一次 */
 int aeGetSetSize(aeEventLoop *eventLoop) {
     return eventLoop->setsize;
 }
 
 /* Tells the next iteration/s of the event processing to set timeout of 0. */
-/* 下一次事务处理时将timeout设为0 */
+/* 如果nowait不为0，在eventloop的flags属性中加上AE_DONT_WAIT;如果为0，则去掉AE_DONT_WAIT选项。 */
 void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
     if (noWait)
         eventLoop->flags |= AE_DONT_WAIT;
@@ -127,6 +130,7 @@ void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
 /* 修改event loop最大文件事件数量
  * 如果有一个文件描述符已经在使用，并且大于当前请求的setsize-1，那么就会返回AE_ERR；不会修改原来的setsize
  * 否则会返回AE_OK */
+/* 这个函数只在config.c中调用了一次 */
 int aeResizeSetSize(aeEventLoop *eventLoop, int setsize) {
     int i;
 
@@ -163,7 +167,7 @@ void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     zfree(eventLoop);
 }
 
-/* 将stop标志位置1 */
+/* 将stop标志位置1，主要用在了redis-benchmark中 */
 void aeStop(aeEventLoop *eventLoop) {
     eventLoop->stop = 1;
 }
@@ -253,26 +257,31 @@ static void aeAddMillisecondsToNow(long long milliseconds, long *sec, long *ms) 
     *ms = when_ms;
 }
 
-/* 创建时间事务，如果成功返回创建的时间事务的id；如果失败返回AE_ERR */
+/* 创建时间事件，如果成功返回创建的时间事务的id；如果失败返回AE_ERR。 */
+/* 在当前的redis版本（6.0）中，从未使用过clientData和finalizerPro这两个参数。 */
 long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
         aeTimeProc *proc, void *clientData,
         aeEventFinalizerProc *finalizerProc)
 {
-    /* 获取id */
+    /* 分配新的id */
     long long id = eventLoop->timeEventNextId++;
     aeTimeEvent *te;
 
     te = zmalloc(sizeof(*te));
-    if (te == NULL) return AE_ERR;
+    if (te == NULL) return AE_ERR;//分配失败
     te->id = id;
+
     /* 定义该事务触发的时间点 */
     aeAddMillisecondsToNow(milliseconds,&te->when_sec,&te->when_ms);
-    /* 绑定该时间事务处理函数 */
+
+    /* 绑定该时间事件处理器 */
     te->timeProc = proc;
-    /* 绑定终结函数 */
+
+    /* 绑定终结函数（目前为止的代码中都将其置为了NULL） */
     te->finalizerProc = finalizerProc;
     te->clientData = clientData;
-    /* 插入到时间事务链表的头部 */
+
+    /* 插入到时间事件链表的头部 */
     te->prev = NULL;
     te->next = eventLoop->timeEventHead;
     te->refcount = 0;
@@ -329,7 +338,7 @@ static aeTimeEvent *aeSearchNearestTimer(aeEventLoop *eventLoop)
 }
 
 /* Process time events */
-/* 处理时间事务，返回处理了的事务数量 */
+/* 处理每一个到达的时间事件，返回处理了的事件数量 */
 static int processTimeEvents(aeEventLoop *eventLoop) {
     int processed = 0;
     aeTimeEvent *te;
@@ -345,24 +354,31 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
      * events to be processed ASAP when this happens: the idea is that
      * processing events earlier is less dangerous than delaying them
      * indefinitely, and practice suggests it is. */
-    /* 如果当前时间滞后于时间事务的时间，那么尽快执行事务会减少风险，实践证明这是正确的 */
+    /* eventLoop->lastTime记录的是上一次处理时间事件的时间，如果系统时钟出错了，需要进行纠正。
+     * 这个时候时间事件会受到未知的影响。通常情况下，这会导致时间事件不能及时执行。
+     * 
+     * 在这里尝试检查系统时钟偏移，强制所有的时间事件尽快被处理：之所以这样做是因为今早处理
+     * 这些时间事件不无限推迟要好，这是最佳实践。 */
     if (now < eventLoop->lastTime) { 
         te = eventLoop->timeEventHead;
         while(te) {
+            /* 将这个时间事件的执行事件秒标志设为0，这样会尽快执行这个时间事件。 */
             te->when_sec = 0;
             te = te->next;
         }
     }
+    /* 更新eventloop中记录的处理时间事件的时间戳 */
     eventLoop->lastTime = now;
 
     te = eventLoop->timeEventHead;
+    /* 在执行回调函数之前，获取当前时间事件最大的id */
     maxId = eventLoop->timeEventNextId-1;
     while(te) {
         long now_sec, now_ms;
         long long id;
 
         /* Remove events scheduled for deletion. */
-        /* 移除带删除的事务 */
+        /* 移除待删除的时间事件 */
         if (te->id == AE_DELETED_EVENT_ID) {
             aeTimeEvent *next = te->next;
             /* If a reference exists for this timer event,
@@ -391,6 +407,8 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
          * add new timers on the head, however if we change the implementation
          * detail, this check may be useful again: we keep it here for future
          * defense. */
+        /* 确保不处理在这个循环中创建的时间事件。 这个检测目前是没有用的，因为当前并不会在回调函数中创建
+         * 新的时间事件，但是在未来可能会有用。*/
         if (te->id > maxId) {
             te = te->next;
             continue;
@@ -402,6 +420,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             (now_sec == te->when_sec && now_ms >= te->when_ms))
         {
             /* 处理这个时间事务 */
+
             int retval;
 
             id = te->id;
@@ -417,7 +436,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
                 /* 周期性事件，一定时间后再接着执行 */
                 aeAddMillisecondsToNow(retval,&te->when_sec,&te->when_ms);
             } else {
-                /* 定时事件，只执行一次就删除 */
+                /* 时间事件处理器返回AE_NOMORE，表明这个时间事件不再需要被执行，将其标记为待删除。 */
                 te->id = AE_DELETED_EVENT_ID;
             }
         }
@@ -441,6 +460,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
  * if flags has AE_CALL_BEFORE_SLEEP set, the beforesleep callback is called.
  *
  * The function returns the number of events processed. */
+/* 处理每一个待处理的时间事件和每一个待处理的文件事件（这个文件事件） */
 int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 {
     int processed = 0, numevents;
@@ -460,9 +480,10 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         aeTimeEvent *shortest = NULL;
         struct timeval tv, *tvp;
 
-        /* 查找最近的时间事件 */
+        /* 有时间事件的时候查找最近要执行的时间事件 */
         if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
             shortest = aeSearchNearestTimer(eventLoop);
+        /* 下面这个if-else语句是为了根据最近的时间事件情况确定文件事件轮询可以阻塞的时间 */
         if (shortest) {
             long now_sec, now_ms;
 
@@ -471,15 +492,17 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 
             /* How many milliseconds we need to wait for the next
              * time event to fire? */
-            /* 距离下一个时间时间还有多少毫秒 */
+            /* 距离下一个时间事件执行还有多少毫秒 */
             long long ms =
                 (shortest->when_sec - now_sec)*1000 +
                 shortest->when_ms - now_ms;
 
             if (ms > 0) {
+                /* 根据最近时间事件发生的时间确定文件事件轮询等待的时间。 */
                 tvp->tv_sec = ms/1000;
                 tvp->tv_usec = (ms % 1000)*1000;
             } else {
+                /* 时间事件已经超时了，这个时候设置文件事件轮询不阻塞，这样就可以尽快处理时间事件。 */
                 tvp->tv_sec = 0;
                 tvp->tv_usec = 0;
             }
@@ -487,9 +510,10 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             /* If we have to check for events but need to return
              * ASAP because of AE_DONT_WAIT we need to set the timeout
              * to zero */
-            /* 执行到这里说明没有时间事件 */
+            /* 执行到这里说明没有要处理的时间事件 */
             /* 如果需要检测事件的同时由于设定了AE_DONT_WAIT需要立即返回，那么我们设定timeout为0，让文件事件不阻塞 */
             if (flags & AE_DONT_WAIT) {
+                /* 文件事件轮询不等待，直接返回 */
                 tv.tv_sec = tv.tv_usec = 0;
                 tvp = &tv;
             } else {
@@ -500,19 +524,21 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         }
 
         if (eventLoop->flags & AE_DONT_WAIT) {
-            /* 设定文件事件不阻塞 */
+            /* 设定文件事件不阻塞，这个可能会覆盖前面的设置，因此拥有更高的优先级。 */
             tv.tv_sec = tv.tv_usec = 0;
             tvp = &tv;
         }
 
-        /* 文件事件轮询 */
         if (eventLoop->beforesleep != NULL && flags & AE_CALL_BEFORE_SLEEP)
             eventLoop->beforesleep(eventLoop);
 
         /* Call the multiplexing API, will return only on timeout or when
          * some event fires. */
-        /* 调用多路复用api，只会在时间到了或者有时间准备好才会返回。 */
-        /* 将已经准备好的fd和对应的文件时间存入fired数组中 */
+        /* tvp==NULL的时候，可以阻塞，直到有文件事件发生
+         * tvp->tv_sec == tvp->tv_usec == 0的时候，测试所有的文件描述符立即返回，不阻塞
+         * tvp->tv_sec != 0 || tvp->tv_usec != 0的时候，等待特定的时间再返回。 */
+        /* 文件事件轮询，调用多路复用api*/
+        /* 将已经准备好的fd和对应的文件事件存入fired数组中，返回的是已经准备好的文件事件 */
         numevents = aeApiPoll(eventLoop, tvp);
 
         /* After sleep callback. */
@@ -521,9 +547,9 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
-            int mask = eventLoop->fired[j].mask;
+            int mask = eventLoop->fired[j].mask; //已经就绪的文件事件类型。
             int fd = eventLoop->fired[j].fd;
-            int fired = 0; /* Number of events fired for current fd. */
+            int fired = 0; /* Number of events fired for current fd. 当前的fd已经执行的事件数量，在这里用于判断执行的顺序。 */
 
             /* Normally we execute the readable event first, and the writable
              * event laster. This is useful as sometimes we may be able
@@ -539,7 +565,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             /* 通常情况下，我们先执行读事件，然后执行写事件。这是有用的因为有时我们可以在处理
              * 完一个query后立马回复
              * 
-             * 但是如果在mask中AE_BARRIER被设置。我们的应用要求我们反着做：永远不要在处理
+             * 但是如果在文件事件结构体中的mask中AE_BARRIER被设置。我们的应用要求我们反着做：永远不要在处理
              * 写事件之前处理读事件。在这种情况下，我们翻转调用的顺序。
              * 这在以下场景很有用： 我们想要在回复客户端之前在beforeSleep()函数中执行文件同步到硬盘 */
             int invert = fe->mask & AE_BARRIER;
@@ -554,7 +580,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             if (!invert && fe->mask & mask & AE_READABLE) {
                 fe->rfileProc(eventLoop,fd,fe->clientData,mask);
                 fired++;
-                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
+                fe = &eventLoop->events[fd]; /* Refresh in case of resize. 为了防止在回调函数中调整大小，这里更新指针。 */
             }
 
             /* Fire the writable event. */

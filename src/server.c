@@ -1860,7 +1860,7 @@ void checkChildrenDone(void) {
  * 一个宏: run_with_period(milliseconds) {...} */
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
-    /* 这三个参数都没有使用，只是为了符合时间事件处理器函数的形式 */
+    /* 这三个参数都没有使用，只是为了符合时间事件处理器函数的形式，为了避免产生编译器警告，进行如下处理。 */
     UNUSED(eventLoop);
     UNUSED(id);
     UNUSED(clientData);
@@ -2126,6 +2126,7 @@ extern int ProcessingEventsWhileBlocked;
  *
  * The most important is freeClientsInAsyncFreeQueue but we also
  * call some other low-risk functions. */
+/* 当前redis版本中唯一一个用到的beforesleepproc函数，server.el中有一个函数指针(beforesleep)指向这个函数 */
 void beforeSleep(struct aeEventLoop *eventLoop) {
     UNUSED(eventLoop);
 
@@ -2154,6 +2155,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     tlsProcessPendingData();
 
     /* If tls still has pending unread data don't sleep at all. */
+    /* 如果tls还有未读的数据，那么就不要阻塞 */
     aeSetDontWait(server.el, tlsHasPendingData());
 
     /* Call the Redis Cluster before sleep function. Note that this function
@@ -2220,6 +2222,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 /* This function is called immadiately after the event loop multiplexing
  * API returned, and the control is going to soon return to Redis by invoking
  * the different events callbacks. */
+/* 当前redis版本中唯一用的另一个beforesleepproc，server.el中的一个函数指针(aftersleep)指向这个函数 */
 void afterSleep(struct aeEventLoop *eventLoop) {
     UNUSED(eventLoop);
 
@@ -2862,6 +2865,9 @@ void initServer(void) {
 
     createSharedObjects();//给 shared 变量（struct sharedObjectsStruct类型）赋初值
     adjustOpenFilesLimit();
+
+    /* 主程序中的唯一的eventloop，在redis-benchmark中的eventloop是测试用的，这个eventloop管理了
+     * redis中所有的文件事件和时间事件 */
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -2872,6 +2878,7 @@ void initServer(void) {
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
     /* Open the TCP listening socket for the user commands. */
+    /* 在这里创建TCP域监听套接字 */
     if (server.port != 0 &&
         listenToPort(server.port,server.ipfd,&server.ipfd_count) == C_ERR)
         exit(1);
@@ -2880,6 +2887,7 @@ void initServer(void) {
         exit(1);
 
     /* Open the listening Unix domain socket. */
+    /* 创建UNIX域监听套接字 */
     if (server.unixsocket != NULL) {
         unlink(server.unixsocket); /* don't care if this fails */
         server.sofd = anetUnixServer(server.neterr,server.unixsocket,
@@ -2892,12 +2900,14 @@ void initServer(void) {
     }
 
     /* Abort if there are no listening sockets at all. */
+    /* 创建监听套接字失败了 */
     if (server.ipfd_count == 0 && server.tlsfd_count == 0 && server.sofd < 0) {
         serverLog(LL_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
 
     /* Create the Redis databases, and initialize other internal state. */
+    /* 创建redis数据库，并且初始化其他内部状态。 */
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
@@ -2959,6 +2969,8 @@ void initServer(void) {
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
+    /* 创建一个时间事件，serverCron作为这个时间事件的回调函数；这是redis渐进式地处理后台任务的方式，
+     * 比如客户端超时，失效键的回收等等。也是server.el管理的唯一一个时间事件。 */
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");
         exit(1);
@@ -2966,7 +2978,9 @@ void initServer(void) {
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
+    /* 创建一系列文件事件用于接收TCP域和UNIX域（local）的连接。 */
     for (j = 0; j < server.ipfd_count; j++) {
+        /*  */
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
             {

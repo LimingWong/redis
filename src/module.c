@@ -5365,6 +5365,7 @@ typedef struct RedisModuleTimer {
 
 /* This is the timer handler that is called by the main event loop. We schedule
  * this timer to be called when the nearest of our module timers will expire. */
+/* 这是一个时间事件处理器。 */
 int moduleTimerHandler(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     UNUSED(eventLoop);
     UNUSED(id);

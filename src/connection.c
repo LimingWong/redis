@@ -52,7 +52,7 @@
 ConnectionType CT_Socket;
 
 /* When a connection is created we must know its type already, but the
- * underlying socket may or may not exist:
+ * underlying socket may or may not exist: 
  *
  * - For accepted connections, it exists as we do not model the listen/accept
  *   part; So caller calls connCreateSocket() followed by connAccept().
