@@ -102,6 +102,8 @@ connection *connCreateSocket() {
 connection *connCreateAcceptedSocket(int fd) {
     connection *conn = connCreateSocket();
     conn->fd = fd;
+    /* 将这个连接的状态标记为CONN_STATE_ACCEPTING状态，表明这个连接还没有准备进行io，还需要进一步的操作
+     * 这个状态变成CONN_STATE_CONNECTED. */
     conn->state = CONN_STATE_ACCEPTING;
     return conn;
 }

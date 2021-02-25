@@ -2716,13 +2716,13 @@ void checkTcpBacklogSettings(void) {
  * impossible to bind, or no bind addresses were specified in the server
  * configuration but the function is not able to bind * for at least
  * one of the IPv4 or IPv6 protocols. */
-/* 在这里根据配置文件中绑定的地址创建对应个数的监听套接字。 */
+/* 在这里根据配置文件中绑定的地址创建对应个数的非阻塞监听套接字。 */
 int listenToPort(int port, int *fds, int *count) {
     int j;
 
     /* Force binding of 0.0.0.0 if no bind address is specified, always
      * entering the loop if j == 0. */
-    /* 如果配置文件中没有指定 */
+    /* 如果配置文件中没有指定绑定地址，那么分别为ipv4和ipv6的所有地址分别创建一个监听描述符 */
     if (server.bindaddr_count == 0) server.bindaddr[0] = NULL;
     for (j = 0; j < server.bindaddr_count || j == 0; j++) {
         if (server.bindaddr[j] == NULL) {

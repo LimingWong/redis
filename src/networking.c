@@ -1049,6 +1049,9 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
      *
      * Because of that, we must do nothing else afterwards.
      */
+    /* 调用connAccept成功后conn->state会变成CONN_STATE_CONNECTED。
+     * 这个函数（clientAcceptHandler）最主要的功能是对处于保护模式且没有设定服务器密码且没有在配置文件中绑定任何网络接口的服务器进行保护，
+     * 限制回环外的客户端连接这个服务器。 */
     if (connAccept(conn, clientAcceptHandler) == C_ERR) {
         char conninfo[100];
         if (connGetState(conn) == CONN_STATE_ERROR)
