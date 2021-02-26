@@ -432,7 +432,7 @@ int anetTcpNonBlockBestEffortBindConnect(char *err, const char *addr, int port,
             ANET_CONNECT_NONBLOCK|ANET_CONNECT_BE_BINDING);
 }
 
-/* 创建通用本地                        Unix连接 */
+/* 创建通用本地Unix连接 */
 int anetUnixGenericConnect(char *err, const char *path, int flags)
 {
     int s;

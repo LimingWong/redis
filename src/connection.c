@@ -108,19 +108,24 @@ connection *connCreateAcceptedSocket(int fd) {
     return conn;
 }
 
+/* connection->type的connect函数 */
 static int connSocketConnect(connection *conn, const char *addr, int port, const char *src_addr,
         ConnectionCallbackFunc connect_handler) {
+    /* 当前conn尝试与对应的地址建立连接，如果连接成功返回已连接文件描述符，这里服务器是作为客户端去主动连接的 */
     int fd = anetTcpNonBlockBestEffortBindConnect(NULL,addr,port,src_addr);
     if (fd == -1) {
+        /* 建立连接失败 */
         conn->state = CONN_STATE_ERROR;
         conn->last_errno = errno;
         return C_ERR;
     }
 
     conn->fd = fd;
-    conn->state = CONN_STATE_CONNECTING;
+    conn->state = CONN_STATE_CONNECTING;/* 状态修改为CONN_STATE_CONNECTING */
 
+    /* 这种连接的fd的处理回调函数由conn->conn_handler指定 */
     conn->conn_handler = connect_handler;
+    /* 创建文件事件，监听写事件 */
     aeCreateFileEvent(server.el, conn->fd, AE_WRITABLE,
             conn->type->ae_handler, conn);
 
@@ -154,10 +159,13 @@ void *connGetPrivateData(connection *conn) {
  */
 
 /* Close the connection and free resources. */
+/* 关闭连接并且释放资源，这是connection->type->close指针指向的默认函数 */
 static void connSocketClose(connection *conn) {
     if (conn->fd != -1) {
+        /* 删除绑定的读写事件 */
         aeDeleteFileEvent(server.el,conn->fd,AE_READABLE);
         aeDeleteFileEvent(server.el,conn->fd,AE_WRITABLE);
+        /* 关闭对应的文件描述符 */
         close(conn->fd);
         conn->fd = -1;
     }
@@ -165,19 +173,21 @@ static void connSocketClose(connection *conn) {
     /* If called from within a handler, schedule the close but
      * keep the connection until the handler returns.
      */
+    /* 如果在conn回调函数中被使用，就标记为待删除 */
     if (connHasRefs(conn)) {
         conn->flags |= CONN_FLAG_CLOSE_SCHEDULED;
         return;
     }
-
+    /* 没有使用则直接释放掉资源 */
     zfree(conn);
 }
 
 static int connSocketWrite(connection *conn, const void *data, size_t data_len) {
     int ret = write(conn->fd, data, data_len);
     if (ret < 0 && errno != EAGAIN) {
-        conn->last_errno = errno;
-        conn->state = CONN_STATE_ERROR;
+        /* 写出错且不能通过重试修复 */
+        conn->last_errno = errno;/* 记录errno */
+        conn->state = CONN_STATE_ERROR;/* 连接状态标记为出错 */
     }
 
     return ret;
@@ -186,18 +196,22 @@ static int connSocketWrite(connection *conn, const void *data, size_t data_len) 
 static int connSocketRead(connection *conn, void *buf, size_t buf_len) {
     int ret = read(conn->fd, buf, buf_len);
     if (!ret) {
+        /* 从fd中读取到文件EOF，已经没有数据可以读取了，将连接的状态变为已关闭。 */
         conn->state = CONN_STATE_CLOSED;
     } else if (ret < 0 && errno != EAGAIN) {
-        conn->last_errno = errno;
-        conn->state = CONN_STATE_ERROR;
+        /* 读取数据发生了错误并且不能通过重复读取解决，EAGAIN这种错误经常发生在非阻塞读写中。 */
+        conn->last_errno = errno;/* 记录发生错误的errno */
+        conn->state = CONN_STATE_ERROR;/* 将连接状态改为出错 */
     }
 
     return ret;
 }
  
+ /* connection->type->accept函数指针默认指向的函数 */
 static int connSocketAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
     int ret = C_OK;
 
+    /* 如果不是CONN_STATE_ACCEPTING状态，直接返回错误 */
     if (conn->state != CONN_STATE_ACCEPTING) return C_ERR;
     conn->state = CONN_STATE_CONNECTED;/* 到这里，连接的状态从CONN_STATE_ACCEPTING变成CONN_STATE_CONNECTED。 */
 
@@ -252,12 +266,15 @@ static const char *connSocketGetLastError(connection *conn) {
     return strerror(conn->last_errno);
 }
 
+/* 这是connection->type->ae_handler指向的默认函数，这个函数是套接字类型连接对应的fd的默认回调函数，
+ * 将两种事件（读写）集中在了一起 */
 static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientData, int mask)
 {
     UNUSED(el);
     UNUSED(fd);
     connection *conn = clientData;
 
+    /* TODO */
     if (conn->state == CONN_STATE_CONNECTING &&
             (mask & AE_WRITABLE) && conn->conn_handler) {
 
@@ -285,9 +302,12 @@ static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientD
      * This is useful when, for instance, we want to do things
      * in the beforeSleep() hook, like fsync'ing a file to disk,
      * before replying to a client. */
+    /* 是否调换处理读写事件的顺序 */
     int invert = conn->flags & CONN_FLAG_WRITE_BARRIER;
 
+    /* 有写事件且有对应的处理函数 */
     int call_write = (mask & AE_WRITABLE) && conn->write_handler;
+    /* 有读时间且有对应的处理函数 */
     int call_read = (mask & AE_READABLE) && conn->read_handler;
 
     /* Handle normal I/O flows */

@@ -35,6 +35,7 @@
 struct aeEventLoop;
 typedef struct connection connection;
 
+/* connection结构体中的state属性选项 */
 typedef enum {
     CONN_STATE_NONE = 0,
     CONN_STATE_CONNECTING,
@@ -44,14 +45,18 @@ typedef enum {
     CONN_STATE_ERROR
 } ConnectionState;
 
-#define CONN_FLAG_CLOSE_SCHEDULED   (1<<0)      /* Closed scheduled by a handler */
-#define CONN_FLAG_WRITE_BARRIER     (1<<1)      /* Write barrier requested */
+/* connection结构体中的flags属性选项，可以进行或运算，两个可以同时有 */
+#define CONN_FLAG_CLOSE_SCHEDULED   (1<<0)      /* Closed scheduled by a handler；这个标记该连接待关闭 */
+#define CONN_FLAG_WRITE_BARRIER     (1<<1)      /* Write barrier requested；一般先处理读请求再处理写请求，有这个标志就先处理写请求在处理读请求。 */
 
+/* 连接的类型 */
 #define CONN_TYPE_SOCKET            1
 #define CONN_TYPE_TLS               2
 
+/* 连接的回调函数指针 */
 typedef void (*ConnectionCallbackFunc)(struct connection *conn);
 
+/* 连接的一系列处理函数 */
 typedef struct ConnectionType {
     void (*ae_handler)(struct aeEventLoop *el, int fd, void *clientData, int mask);
     int (*connect)(struct connection *conn, const char *addr, int port, const char *source_addr, ConnectionCallbackFunc connect_handler);
@@ -69,17 +74,18 @@ typedef struct ConnectionType {
     int (*get_type)(struct connection *conn);
 } ConnectionType;
 
+/* 连接结构体 */
 struct connection {
-    ConnectionType *type;
-    ConnectionState state;
-    short int flags;
-    short int refs;
-    int last_errno;
-    void *private_data;
-    ConnectionCallbackFunc conn_handler;
-    ConnectionCallbackFunc write_handler;
-    ConnectionCallbackFunc read_handler;
-    int fd;
+    ConnectionType *type;/* 绑定的一系列函数 */
+    ConnectionState state;/* 连接的当前状态 */
+    short int flags;/* 标记连接的两种事件 */
+    short int refs;/* 引用计数，当前正在使用该连接的个数 */
+    int last_errno;/* 上一个出错的错误玛 */
+    void *private_data;/* 用来指向连接的客户端指针 */
+    ConnectionCallbackFunc conn_handler;/* 该连接使用这个函数进行 */
+    ConnectionCallbackFunc write_handler;/* 该连接使用这个函数进行写操作 */
+    ConnectionCallbackFunc read_handler;/* 该连接使用这个函数进行读操作 */
+    int fd;/* 该连接对于的已连接描述符 */
 };
 
 /* The connection module does not deal with listening and accepting sockets,

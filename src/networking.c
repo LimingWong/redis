@@ -111,7 +111,7 @@ client *createClient(connection *conn) {
     /* 如果传入一个NULL那么会创建一个非连接的客户端。由于所有的命令的都需要在客户端的上下文中执行(所有命令的函数实现
      * 的参数都是一个客户端指针)，因此在有些情况下这样特殊的客户端是有用的比如执行lua脚本的时候。*/
     if (conn) {
-        /* 设置客户的非阻塞 */
+        /* 设置与这个连接对应的已连接文件描述符为非阻塞 */
         connNonBlock(conn);
         /* 有数据就立刻发出去，禁止Nagla算法 */
         connEnableTcpNoDelay(conn);
