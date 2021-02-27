@@ -1964,19 +1964,23 @@ void processInputBuffer(client *c) {
     /* Keep processing while there is something in the input buffer */
     while(c->qb_pos < sdslen(c->querybuf)) {
         /* Return if clients are paused. */
+        /* 如果客户端被暂停直接返回 */
         if (!(c->flags & CLIENT_SLAVE) && clientsArePaused()) break;
 
         /* Immediately abort if the client is in the middle of something. */
+        /* 如果客户端正在被阻塞，立刻返回 */
         if (c->flags & CLIENT_BLOCKED) break;
 
         /* Don't process more buffers from clients that have already pending
          * commands to execute in c->argv. */
+        /* 如果还有待执行的命令，就不要处理新的来自客户端的缓冲区 */
         if (c->flags & CLIENT_PENDING_COMMAND) break;
 
         /* Don't process input from the master while there is a busy script
          * condition on the slave. We want just to accumulate the replication
          * stream (instead of replying -BUSY like we do with other clients) and
          * later resume the processing. */
+        /* TODO */
         if (server.lua_timedout && c->flags & CLIENT_MASTER) break;
 
         /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
@@ -1984,9 +1988,13 @@ void processInputBuffer(client *c) {
          * this flag has been set (i.e. don't process more commands).
          *
          * The same applies for clients we want to terminate ASAP. */
+        /* 如果客户端有这两个标志，也不再处理请求缓冲区 */
         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
         /* Determine request type when unknown. */
+        /* 判断请求是哪种类型
+         * 简单说内联请求是TELNET发送来的
+         * 而多条请求是普通客户端发送来的 */
         if (!c->reqtype) {
             if (c->querybuf[c->qb_pos] == '*') {
                 c->reqtype = PROTO_REQ_MULTIBULK;
@@ -2050,18 +2058,22 @@ void readQueryFromClient(connection *conn) {
 
     /* Check if we want to read from the client later when exiting from
      * the event loop. This is the case if threaded I/O is enabled. */
+     /* 检查我们是否想要延迟从客户端读当退出eventloop之后。这只会在多线程IO读开启之后执行，而这多线程io读是不建议的 */
     if (postponeClientRead(c)) return;
 
     /* Update total number of reads on server */
+    /* 更新服务器执行的读的总次数 */
     server.stat_total_reads_processed++;
 
-    readlen = PROTO_IOBUF_LEN;
+    readlen = PROTO_IOBUF_LEN;/* 16kb */
     /* If this is a multi bulk request, and we are processing a bulk reply
      * that is large enough, try to maximize the probability that the query
      * buffer contains exactly the SDS string representing the object, even
      * at the risk of requiring more read(2) calls. This way the function
      * processMultiBulkBuffer() can avoid copying buffers to create the
      * Redis Object representing the argument. */
+    /* 如果是一个multi bulk请求，并且正在处理的bulk reply也足够大（32k），就尝试使请求缓冲区的大小正好
+     * 足够表示该对象。。。。TODO */
     if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
         && c->bulklen >= PROTO_MBULK_BIG_ARG)
     {
@@ -2072,19 +2084,28 @@ void readQueryFromClient(connection *conn) {
         if (remaining > 0 && remaining < readlen) readlen = remaining;
     }
 
+    /* 当前请求缓冲区的大小 */
     qblen = sdslen(c->querybuf);
+    /* 更新请求缓冲区大小的峰值 */
     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
+    /* 为请求缓冲区准备足够大的空间 */
     c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
+    
+    /* 核心函数，从对应的文件描述符中读取数据 */
     nread = connRead(c->conn, c->querybuf+qblen, readlen);
     if (nread == -1) {
+        /* 读取出现了错误 */
         if (connGetState(conn) == CONN_STATE_CONNECTED) {
+            /* 如果是一个已连接的客户端，直接返回 */
             return;
         } else {
+            /* 否则报错，释放客户端 */
             serverLog(LL_VERBOSE, "Reading from client: %s",connGetLastError(c->conn));
             freeClientAsync(c);
             return;
         }
     } else if (nread == 0) {
+        /* 读取的时候遇到了文件尾，说明客户端关闭了连接。 */
         serverLog(LL_VERBOSE, "Client closed connection");
         freeClientAsync(c);
         return;
@@ -2092,6 +2113,7 @@ void readQueryFromClient(connection *conn) {
         /* Append the query buffer to the pending (not applied) buffer
          * of the master. We'll use this buffer later in order to have a
          * copy of the string applied by the last command executed. */
+        /* 读取成功了，将数据添加到pending_querybuf中 */
         c->pending_querybuf = sdscatlen(c->pending_querybuf,
                                         c->querybuf+qblen,nread);
     }
@@ -2101,18 +2123,21 @@ void readQueryFromClient(connection *conn) {
     if (c->flags & CLIENT_MASTER) c->read_reploff += nread;
     server.stat_net_input_bytes += nread;
     if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
+        /* 如果请求的数据大小超过了服务器对请求缓冲区最大空间大小，那么就不处理并且报错 */
         sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
 
         bytes = sdscatrepr(bytes,c->querybuf,64);
         serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
         sdsfree(ci);
         sdsfree(bytes);
+        /* 异步释放掉该客户端 */
         freeClientAsync(c);
         return;
     }
 
     /* There is more data in the client input buffer, continue parsing it
      * in case to check if there is a full command to execute. */
+    /* 解析请求缓冲区的参数并处理 */
      processInputBuffer(c);
 }
 

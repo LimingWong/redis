@@ -213,6 +213,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define AOF_WAIT_REWRITE 2    /* AOF waits rewrite to start appending */
 
 /* Client flags */
+/* 客户端的标志，对应于client结构体的flags */
 #define CLIENT_SLAVE (1<<0)   /* This client is a repliaca */
 #define CLIENT_MASTER (1<<1)  /* This client is a master */
 #define CLIENT_MONITOR (1<<2) /* This client is a slave monitor, see MONITOR */
@@ -276,8 +277,9 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define BLOCKED_NUM 6     /* Number of blocked states. */
 
 /* Client request types */
-#define PROTO_REQ_INLINE 1
-#define PROTO_REQ_MULTIBULK 2
+/* 客户端请求的类型，对应client结构体中的reqtpye属性 */
+#define PROTO_REQ_INLINE 1 /* 内联命令 */
+#define PROTO_REQ_MULTIBULK 2 /* 多条命令 */
 
 /* Client classes for client limits, currently used only for
  * the max-client-output-buffer limit implementation. */
@@ -801,6 +803,7 @@ typedef struct client {
     int resp;               /* RESP protocol version. Can be 2 or 3. */
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
+    /* 用于累积客户端请求的缓冲区 */
     sds querybuf;           /* Buffer we use to accumulate client queries. */
     size_t qb_pos;          /* The position we have read in querybuf. */
     sds pending_querybuf;   /* If this client is flagged as master, this buffer
@@ -815,19 +818,28 @@ typedef struct client {
                                user is set to NULL the connection can do
                                anything (admin). */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
+    /* 剩余未读的参数内容数量 */
     int multibulklen;       /* Number of multi bulk arguments left to read. */
+    /* 命令内容的长度 */
     long bulklen;           /* Length of bulk argument in multi bulk request. */
     /* 存储发送到客户端的数据的一个结构体 */
     list *reply;            /* List of reply objects to send to the client. */
     /* reply list的大小，一共有多少个字节 */
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
+    /* 已经发送的字节 */
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
+    /* 客户端创建的时间 */
     time_t ctime;           /* Client creation time. */
+    /* 与客户端上一次交互的时间 */
     time_t lastinteraction; /* Time of the last interaction, used for timeout */
+    /* 客户端的输出缓冲区超过软性限制的时间 */
     time_t obuf_soft_limit_reached_time;
+    /* 客户端标志 */
     uint64_t flags;         /* Client flags: CLIENT_* macros. */
+    /* 代表该客户端认证的状态 */
     int authenticated;      /* Needed when the default user requires auth. */
+    /*  */
     int replstate;          /* Replication state if this is a slave. */
     int repl_put_online_on_ack; /* Install slave write handler on first ACK. */
     int repldbfd;           /* Replication DB file descriptor. */
@@ -853,6 +865,7 @@ typedef struct client {
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
     sds peerid;             /* Cached peer ID. */
+    /* 目前客户端在服务器客户端链表中的节点指针 */
     listNode *client_list_node; /* list node in client list */
     RedisModuleUserChangedFunc auth_callback; /* Module callback to execute
                                                * when the authenticated user
