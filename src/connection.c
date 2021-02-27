@@ -231,6 +231,10 @@ static int connSocketAccept(connection *conn, ConnectionCallbackFunc accept_hand
  * always called before and not after the read handler in a single event
  * loop.
  */
+/* 注册一个写文件事件
+ * 
+ * barrier标志表示需要优先写。会在conn->flags中设置CONN_FLAG_WRITE_BARRIER。这会保证
+ * 在一个事务循环中，写事件先于读事件执行 */
 static int connSocketSetWriteHandler(connection *conn, ConnectionCallbackFunc func, int barrier) {
     if (func == conn->write_handler) return C_OK;
 
@@ -250,6 +254,7 @@ static int connSocketSetWriteHandler(connection *conn, ConnectionCallbackFunc fu
 /* Register a read handler, to be called when the connection is readable.
  * If NULL, the existing handler is removed.
  */
+/* 注册一个读文件事件，当连接变得可读时调用该函数；如果func是NULL，那么会删除该连接对应的读文件事件 */
 static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
     if (func == conn->read_handler) return C_OK;
 
@@ -325,6 +330,7 @@ static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientD
     }
 }
 
+/* 阻塞式的连接，建立连接后等待timeout时间，如果在这个时间内还是不可写，那么就报错 */
 static int connSocketBlockingConnect(connection *conn, const char *addr, int port, long long timeout) {
     int fd = anetTcpNonBlockConnect(NULL,addr,port);
     if (fd == -1) {

@@ -46,6 +46,8 @@
  * done within 'timeout' milliseconds the operation succeeds and 'size' is
  * returned. Otherwise the operation fails, -1 is returned, and an unspecified
  * partial write could be performed against the file descriptor. */
+/* 向fd中写入size大小的字节，如果在timeout毫秒内写完，那么操作就算成功，返回size；
+ * 否则这个操作就算失败，返回-1，向fd写入的字节数未知。 */
 ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout) {
     ssize_t nwritten, ret = size;
     long long start = mstime();
@@ -58,6 +60,7 @@ ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout) {
 
         /* Optimistically try to write before checking if the file descriptor
          * is actually writable. At worst we get EAGAIN. */
+        /* 在没有检查fd是否可写的情况下，乐观的尝试去写。最快的情况也不过是得到一个EAGAIN错误码 */
         nwritten = write(fd,ptr,size);
         if (nwritten == -1) {
             if (errno != EAGAIN) return -1;
@@ -82,6 +85,8 @@ ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout) {
  * within 'timeout' milliseconds the operation succeed and 'size' is returned.
  * Otherwise the operation fails, -1 is returned, and an unspecified amount of
  * data could be read from the file descriptor. */
+/* 从fd中读取特定大小的字节。如果所有的字节在timeout毫秒内读取完成了，那么操作成功，返回size；
+ * 否则操作失败，返回-1，可能从fd中读取不确定的字节。 */
 ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout) {
     ssize_t nread, totread = 0;
     long long start = mstime();
@@ -95,6 +100,7 @@ ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout) {
 
         /* Optimistically try to read before checking if the file descriptor
          * is actually readable. At worst we get EAGAIN. */
+        /* 在没有检查fd是否可读的情况下，乐观的尝试去读。最快的情况也不过是得到一个EAGAIN错误码 */
         nread = read(fd,ptr,size);
         if (nread == 0) return -1; /* short read. */
         if (nread == -1) {
@@ -122,6 +128,8 @@ ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout) {
  *
  * On success the number of bytes read is returned, otherwise -1.
  * On success the string is always correctly terminated with a 0 byte. */
+/* 读取一行，保证读取每个字符的时间不超过timeout毫秒
+ * 如果成功，返回读取的字节个数并且读取的字符串以\0结束，否则返回-1 */
 ssize_t syncReadLine(int fd, char *ptr, ssize_t size, long long timeout) {
     ssize_t nread = 0;
 

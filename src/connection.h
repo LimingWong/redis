@@ -130,6 +130,7 @@ static inline int connConnect(connection *conn, const char *addr, int port, cons
  * connections, but should probably be refactored out of cluster.c and replication.c,
  * in favor of a pure async implementation.
  */
+/* 阻塞式的连接 */
 static inline int connBlockingConnect(connection *conn, const char *addr, int port, long long timeout) {
     return conn->type->blocking_connect(conn, addr, port, timeout);
 }

@@ -74,7 +74,7 @@ static inline int connHasRefs(connection *conn) {
  * 2. Execute the handler (if set).
  * 3. Decrement refs and perform deferred close, if refs==0.
  */
-/* 这是调用conn的三个回调函数的装饰函数
+/* 
  * 会通过conn->refs来保护或者释放连接 */
 static inline int callHandler(connection *conn, ConnectionCallbackFunc handler) {
     connIncrRefs(conn);
