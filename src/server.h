@@ -1514,7 +1514,7 @@ typedef int *redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, i
 struct redisCommand {
     char *name;
     redisCommandProc *proc;
-    int arity;
+    int arity; /* 参数的个数，如果为正，说明命令有固定个数的参数；如果为负，说明命令参数不固定但是有最小个数 */
     char *sflags;   /* Flags as string representation, one char per flag. */
     uint64_t flags; /* The actual flags, obtained from the 'sflags' field. */
     /* Use a function to determine keys arguments in a command line.

@@ -3369,6 +3369,7 @@ void call(client *c, int flags) {
     dirty = server.dirty;
     updateCachedTime(0);
     start = server.ustime;
+    /* 调用执行命令 */
     c->cmd->proc(c);
     duration = ustime()-start;
     dirty = server.dirty-dirty;
@@ -3517,6 +3518,7 @@ void rejectCommand(client *c, robj *reply) {
     }
 }
 
+/* 命令被拒绝执行 */
 void rejectCommandFormat(client *c, const char *fmt, ...) {
     flagTransaction(c);
     va_list ap;
@@ -3542,6 +3544,7 @@ void rejectCommandFormat(client *c, const char *fmt, ...) {
  * If C_OK is returned the client is still alive and valid and
  * other operations can be performed by the caller. Otherwise
  * if C_ERR is returned the client was destroyed (i.e. after QUIT). */
+/* 如果返回C_OK，那么客户端有效，其他调用者也可以执行其他操作；否则返回C_ERR客户端会被销毁 */
 int processCommand(client *c) {
     moduleCallCommandFilters(c);
 
@@ -3549,6 +3552,7 @@ int processCommand(client *c) {
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
      * a regular command proc. */
+    /* quit命令单独处理。正常命令的执行会被检查 */
     if (!strcasecmp(c->argv[0]->ptr,"quit")) {
         addReply(c,shared.ok);
         c->flags |= CLIENT_CLOSE_AFTER_REPLY;
@@ -3569,6 +3573,7 @@ int processCommand(client *c) {
         return C_OK;
     } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
                (c->argc < -c->cmd->arity)) {
+                   /* 命令参数个数错误 */
         rejectCommandFormat(c,"wrong number of arguments for '%s' command",
             c->cmd->name);
         return C_OK;

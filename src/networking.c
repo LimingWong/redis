@@ -1699,7 +1699,7 @@ int processInlineBuffer(client *c) {
      *
      * However the is an exception: masters may send us just a newline
      * to keep the connection active. */
-    /*  */
+    /* master客户端不应该使用内链协议来执行实际的命令，如果发生了，说明在出现了bug， */
     if (querylen != 0 && c->flags & CLIENT_MASTER) {
         serverLog(LL_WARNING,"WARNING: Receiving inline protocol from master, master stream corruption? Closing the master connection and discarding the cached master.");
         setProtocolError("Master using the inline protocol. Desync?",c);
@@ -1707,6 +1707,7 @@ int processInlineBuffer(client *c) {
     }
 
     /* Move querybuffer position to the next query in the buffer. */
+    /* 指向下一个位置 */
     c->qb_pos += querylen+linefeed_chars;
 
     /* Setup argv array on client structure */
@@ -1716,6 +1717,7 @@ int processInlineBuffer(client *c) {
     }
 
     /* Create redis objects for all arguments. */
+    /* 为所有参数创建redis对象并放入c->argv */
     for (c->argc = 0, j = 0; j < argc; j++) {
         c->argv[c->argc] = createObject(OBJ_STRING,argv[j]);
         c->argc++;
@@ -1775,6 +1777,7 @@ int processMultibulkBuffer(client *c) {
     long long ll;
 
     if (c->multibulklen == 0) {
+        /* 在这里计算multibulklen */
         /* The client should have been reset */
         serverAssertWithInfo(c,NULL,c->argc == 0);
 
@@ -1806,9 +1809,11 @@ int processMultibulkBuffer(client *c) {
 
         if (ll <= 0) return C_OK;
 
+        /* 更新multibuilklen */
         c->multibulklen = ll;
 
         /* Setup argv array on client structure */
+        /* 设置argv并分配空间爱你 */
         if (c->argv) zfree(c->argv);
         c->argv = zmalloc(sizeof(robj*)*c->multibulklen);
     }
@@ -1832,6 +1837,7 @@ int processMultibulkBuffer(client *c) {
             if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
                 break;
 
+            /* 因为是bulkstring，所以必须以'$'开头 */
             if (c->querybuf[c->qb_pos] != '$') {
                 addReplyErrorFormat(c,
                     "Protocol error: expected '$', got '%c'",
@@ -1899,6 +1905,7 @@ int processMultibulkBuffer(client *c) {
     }
 
     /* We're done when c->multibulk == 0 */
+    /* 解析完了所有的输入 */
     if (c->multibulklen == 0) return C_OK;
 
     /* Still not ready to process the command */
@@ -1951,6 +1958,7 @@ void commandProcessed(client *c) {
  *
  * The function returns C_ERR in case the client was freed as a side effect
  * of processing the command, otherwise C_OK is returned. */
+/*  */
 int processCommandAndResetClient(client *c) {
     int deadclient = 0;
     server.current_client = c;
@@ -2038,12 +2046,14 @@ void processInputBuffer(client *c) {
             /* If we are in the context of an I/O thread, we can't really
              * execute the command here. All we can do is to flag the client
              * as one that needs to process the command. */
+            /* 如果当前在一个io线程的上下文中，我们不能执行命令，只能标记有待执行的命令 */
             if (c->flags & CLIENT_PENDING_READ) {
                 c->flags |= CLIENT_PENDING_COMMAND;
                 break;
             }
 
             /* We are finally ready to execute the command. */
+            /* 解析好命令之后开始执行命令 */
             if (processCommandAndResetClient(c) == C_ERR) {
                 /* If the client is no longer valid, we avoid exiting this
                  * loop and trimming the client buffer later. So we return
@@ -2054,6 +2064,7 @@ void processInputBuffer(client *c) {
     }
 
     /* Trim to pos */
+    /* 为输入缓冲区仅保留最后一个参数的长度 */
     if (c->qb_pos) {
         sdsrange(c->querybuf,c->qb_pos,-1);
         c->qb_pos = 0;
