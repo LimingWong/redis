@@ -1653,11 +1653,14 @@ int processInlineBuffer(client *c) {
     size_t querylen;
 
     /* Search for end of line */
+    /* 查找行尾的位置。 */
     newline = strchr(c->querybuf+c->qb_pos,'\n');
 
     /* Nothing to do without a \r\n */
+    /* 没有找到行尾就终止解析，返回错误 */
     if (newline == NULL) {
         if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
+            /* 请求缓冲区的长度超过了最大的要求，返回错误 */
             addReplyError(c,"Protocol error: too big inline request");
             setProtocolError("too big inline request",c);
         }
@@ -1665,15 +1668,18 @@ int processInlineBuffer(client *c) {
     }
 
     /* Handle the \r\n case. */
+    /* 处理以\r\n结尾的情况 */
     if (newline && newline != c->querybuf+c->qb_pos && *(newline-1) == '\r')
         newline--, linefeed_chars++;
 
     /* Split the input buffer up to the \r\n */
+    /* 用空格分割输入缓冲区，argc表示分割的数量，argv代表每个分割的sds字符串 */
     querylen = newline-(c->querybuf+c->qb_pos);
     aux = sdsnewlen(c->querybuf+c->qb_pos,querylen);
     argv = sdssplitargs(aux,&argc);
     sdsfree(aux);
     if (argv == NULL) {
+        /* 请求字符串中出现了不对称的引号 */
         addReplyError(c,"Protocol error: unbalanced quotes in request");
         setProtocolError("unbalanced quotes in inline request",c);
         return C_ERR;
@@ -1682,6 +1688,7 @@ int processInlineBuffer(client *c) {
     /* Newline from slaves can be used to refresh the last ACK time.
      * This is useful for a slave to ping back while loading a big
      * RDB file. */
+    /* 来自slaves的请求可以用来刷新ack事件。这在slaves在加载一个大的RDB文件的时候用来ping回是有用的。 */
     if (querylen == 0 && getClientType(c) == CLIENT_TYPE_SLAVE)
         c->repl_ack_time = server.unixtime;
 
@@ -1692,6 +1699,7 @@ int processInlineBuffer(client *c) {
      *
      * However the is an exception: masters may send us just a newline
      * to keep the connection active. */
+    /*  */
     if (querylen != 0 && c->flags & CLIENT_MASTER) {
         serverLog(LL_WARNING,"WARNING: Receiving inline protocol from master, master stream corruption? Closing the master connection and discarding the cached master.");
         setProtocolError("Master using the inline protocol. Desync?",c);
@@ -1760,6 +1768,7 @@ static void setProtocolError(const char *errstr, client *c) {
  * This function is called if processInputBuffer() detects that the next
  * command is in RESP format, so the first byte in the command is found
  * to be '*'. Otherwise for inline commands processInlineBuffer() is called. */
+/* 这个函数解析RESP格式的命令，所以命令的第一个字节是‘*’；否则是内联命令，需要调用processInlineBuffer()处理。 */
 int processMultibulkBuffer(client *c) {
     char *newline = NULL;
     int ok;
@@ -1993,8 +2002,8 @@ void processInputBuffer(client *c) {
 
         /* Determine request type when unknown. */
         /* 判断请求是哪种类型
-         * 简单说内联请求是TELNET发送来的
-         * 而多条请求是普通客户端发送来的 */
+         * 简单说内联请求是TELNET发送来的, 发送的命令不遵守resp格式
+         * 而多条请求是普通redis客户端发送来的，遵守resp格式 */
         if (!c->reqtype) {
             if (c->querybuf[c->qb_pos] == '*') {
                 c->reqtype = PROTO_REQ_MULTIBULK;
