@@ -1473,6 +1473,7 @@ void updateDictResizePolicy(void) {
 
 /* Return true if there are no active children processes doing RDB saving,
  * AOF rewriting, or some side process spawned by a loaded module. */
+/* 如果没有活跃的子进程在处理RDB保存或者AOF重写或者由加载的模块派生的子进程，返回false，否则返回true */
 int hasActiveChildProcess() {
     return server.rdb_child_pid != -1 ||
            server.aof_child_pid != -1 ||
