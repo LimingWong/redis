@@ -129,7 +129,7 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
         (entry)->v.val = (_val_); \
 } while(0)
 
-/* 设置有符号整数，直接赋值*/
+/* 设置有符号整数，直接赋值；这个一般用于存储过期键的过期unix绝对时间，以毫秒为单位*/
 #define dictSetSignedIntegerVal(entry, _val_) \
     do { (entry)->v.s64 = _val_; } while(0)
 

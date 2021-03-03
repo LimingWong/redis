@@ -488,12 +488,16 @@ long long dbTotalServerKeyCount() {
  *
  * Every time a key in the database is modified the function
  * signalModifiedKey() is called.
+ * 如果数据库中的一个key被修改了，就会调用signalModifiedKey()这个函数
  *
  * Every time a DB is flushed the function signalFlushDb() is called.
+ * 如果一个数据库被清除掉了，就会调用signalFlushDb()这个函数
+ * 
  *----------------------------------------------------------------------------*/
 
 /* Note that the 'c' argument may be NULL if the key was modified out of
  * a context of a client. */
+/* 如果key不是在客户端中修改的，c也可以是NULL */
 void signalModifiedKey(client *c, redisDb *db, robj *key) {
     touchWatchedKey(db,key);
     trackingInvalidateKey(c,key);
@@ -679,6 +683,7 @@ void keysCommand(client *c) {
 
 /* This callback is used by scanGenericCommand in order to collect elements
  * returned by the dictionary iterator into a list. */
+/* 这是一个scanGenericCommand()函数的一个辅助函数，用于将返回的字典迭代器转换成一个list */
 void scanCallback(void *privdata, const dictEntry *de) {
     void **pd = (void**) privdata;
     list *keys = pd[0];
@@ -928,6 +933,7 @@ cleanup:
 }
 
 /* The SCAN command completely relies on scanGenericCommand. */
+/* scan命令完全依赖于scanGenericCommand */
 void scanCommand(client *c) {
     unsigned long cursor;
     if (parseScanCursorOrReply(c,c->argv[1],&cursor) == C_ERR) return;
@@ -938,6 +944,7 @@ void dbsizeCommand(client *c) {
     addReplyLongLong(c,dictSize(c->db->dict));
 }
 
+/* 上一次进行rdb保存的时间 */
 void lastsaveCommand(client *c) {
     addReplyLongLong(c,server.lastsave);
 }
@@ -972,6 +979,7 @@ void typeCommand(client *c) {
 }
 /* ----------------------------------------------- */
 
+/* 关闭redis服务器的命令 */
 void shutdownCommand(client *c) {
     int flags = 0;
 
@@ -988,7 +996,7 @@ void shutdownCommand(client *c) {
             return;
         }
     }
-    if (prepareForShutdown(flags) == C_OK) exit(0);
+    if (prepareForShutdown(flags) == C_OK) exit(0);/* 关闭命令核心调用函数 */
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
 
@@ -1034,14 +1042,17 @@ void renameGenericCommand(client *c, int nx) {
     addReply(c,nx ? shared.cone : shared.ok);
 }
 
+/* 重新命名一个key，如果新旧key名字一样就直接返回；如果新的key已经存在，那么删除掉 */
 void renameCommand(client *c) {
     renameGenericCommand(c,0);
 }
 
+/* 重新命名一个key，如果新旧key名字一样就直接返回；如果新的key已经存在,就不执行该操作，返回0.直接在新key不存在的情况下才执行 */
 void renamenxCommand(client *c) {
     renameGenericCommand(c,1);
 }
 
+/* 将一个key从当前数据库移到指定的数据库中；如果key在当前数据库不存在或者在指定数据库已经存在，那么就什么都不做。 */
 void moveCommand(client *c) {
     robj *o;
     redisDb *src, *dst;
@@ -1108,6 +1119,7 @@ void moveCommand(client *c) {
  * one or more blocked clients for B[LR]POP or other blocking commands
  * and signal the keys as ready if they are of the right type. See the comment
  * where the function is used for more info. */
+/* 检查db中的blocking_keys在交换完数据库后有没有准备好。如果准备好了就通知客户端。 */
 void scanDatabaseForReadyLists(redisDb *db) {
     dictEntry *de;
     dictIterator *di = dictGetSafeIterator(db->blocking_keys);
@@ -1140,6 +1152,7 @@ int dbSwapDatabases(long id1, long id2) {
     /* Swap hash tables. Note that we don't swap blocking_keys,
      * ready_keys and watched_keys, since we want clients to
      * remain in the same DB they were. */
+    /* 交换hash表，注意并不交换blocking_keys，ready_keys和watched_keys这三个字典 */
     db1->dict = db2->dict;
     db1->expires = db2->expires;
     db1->avg_ttl = db2->avg_ttl;
@@ -1165,6 +1178,7 @@ int dbSwapDatabases(long id1, long id2) {
 }
 
 /* SWAPDB db1 db2 */
+/* 交换两个数据库 */
 void swapdbCommand(client *c) {
     long id1, id2;
 
@@ -1200,6 +1214,7 @@ void swapdbCommand(client *c) {
 int removeExpire(redisDb *db, robj *key) {
     /* An expire may only be removed if there is a corresponding entry in the
      * main dict. Otherwise, the key will never be freed. */
+    /* 一个过期的key只有在主数据库中有对应的entry的时候彩绘被删除，否则永远都不会删除 */
     serverAssertWithInfo(NULL,key,dictFind(db->dict,key->ptr) != NULL);
     return dictDelete(db->expires,key->ptr) == DICT_OK;
 }
@@ -1208,12 +1223,15 @@ int removeExpire(redisDb *db, robj *key) {
  * of an user calling a command 'c' is the client, otherwise 'c' is set
  * to NULL. The 'when' parameter is the absolute unix time in milliseconds
  * after which the key will no longer be considered valid. */
+/* 设定一个key的过期时间。如果这个过期时间是在用户执行命令的上下文中指定的，那么c是客户端，否则c为NULL
+ * 'when'是key过期的绝对unix时间，以毫秒为单位，过了这个时间key将被认为不再有效。 */
 void setExpire(client *c, redisDb *db, robj *key, long long when) {
     dictEntry *kde, *de;
 
     /* Reuse the sds from the main dict in the expire dict */
     kde = dictFind(db->dict,key->ptr);
     serverAssertWithInfo(NULL,key,kde != NULL);
+    /* 在过期字典中添加对应的key，并设定好过期的时间 */
     de = dictAddOrFind(db->expires,dictGetKey(kde));
     dictSetSignedIntegerVal(de,when);
 
@@ -1325,6 +1343,7 @@ int keyIsExpired(redisDb *db, robj *key) {
  *
  * The return value of the function is 0 if the key is still valid,
  * otherwise the function returns 1 if the key is expired. */
+/* 当我门需要操作一个给定的key的时候需要调用这个函数，因为有的在数据库中的key可能已经过期了。 */
 int expireIfNeeded(redisDb *db, robj *key) {
     if (!keyIsExpired(db,key)) return 0;
 

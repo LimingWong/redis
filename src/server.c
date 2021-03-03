@@ -178,8 +178,15 @@ volatile unsigned long lru_clock; /* Server global current LRU time. */
  *    specific data structures, such as: DEL, RENAME, MOVE, SELECT,
  *    TYPE, EXPIRE*, PEXPIRE*, TTL, PTTL, ...
  */
+void mingCommand(client* c) {
+    addReplyBulkCString(c, "yue");
+}
 
 struct redisCommand redisCommandTable[] = {
+    {"ming",mingCommand,1,
+     "admin no-script",
+     0,NULL,0,0,0,0,0,0},
+
     {"module",moduleCommand,-2,
      "admin no-script",
      0,NULL,0,0,0,0,0,0},

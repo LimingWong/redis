@@ -471,7 +471,3 @@ Eventually you'll find your way inside the Redis code base :-)
 Enjoy!
 
 
-
-mksbscdnljlgdegc  pop3
-
-zcypwzxeyzwidgeh imap
