@@ -44,6 +44,8 @@ struct _rio {
     /* Backend functions.
      * Since this functions do not tolerate short writes or reads the return
      * value is simplified to: zero on error, non zero on complete success. */
+    /* 这是后台函数。
+     * 由于这些函数不允许short write和short read，一次这些函数的返回值简化为：如果出错返回0，如果成功返回非0值 */
     size_t (*read)(struct _rio *, void *buf, size_t len);
     size_t (*write)(struct _rio *, const void *buf, size_t len);
     off_t (*tell)(struct _rio *);
@@ -53,31 +55,40 @@ struct _rio {
      * designed so that can be called with the current checksum, and the buf
      * and len fields pointing to the new block of data to add to the checksum
      * computation. */
+    /* 这个update_cksum函数如果没有设为NULL，是用来计算目前读写的数据的校验和的。这个函数
+     * 应该被设计为能够利用现有的校验和，buf和len参数指向新的数据块用于计算新的校验和 */
     void (*update_cksum)(struct _rio *, const void *buf, size_t len);
 
     /* The current checksum and flags (see RIO_FLAG_*) */
+    /* 当前的校验和与flags */
     uint64_t cksum, flags;
 
     /* number of bytes read or written */
+    /* 已经读写的总的字节数 */
     size_t processed_bytes;
 
     /* maximum single read or write chunk size */
+    /* 单次读写最大的数据块大小 */
     size_t max_processing_chunk;
 
     /* Backend-specific vars. */
+    /* 与特定后台相关的变量 */
     union {
         /* In-memory buffer target. */
+        /* 内存缓存 */
         struct {
             sds ptr;
             off_t pos;
         } buffer;
         /* Stdio file pointer target. */
+        /* 标准io文件 */
         struct {
             FILE *fp;
             off_t buffered; /* Bytes written since last fsync. */
             off_t autosync; /* fsync after 'autosync' bytes written. */
         } file;
         /* Connection object (used to read from socket) */
+        /* 网络对象 */
         struct {
             connection *conn;   /* Connection */
             off_t pos;    /* pos in buf that was returned */
@@ -86,6 +97,7 @@ struct _rio {
             size_t read_so_far; /* amount of data read from the rio (not buffered) */
         } conn;
         /* FD target (used to write to pipe). */
+        /* 文件描述对象，用于写管道 */
         struct {
             int fd;       /* File descriptor. */
             off_t pos;
@@ -99,6 +111,7 @@ typedef struct _rio rio;
 /* The following functions are our interface with the stream. They'll call the
  * actual implementation of read / write / tell, and will update the checksum
  * if needed. */
+/* 下面的函数是我们的数据接口。 */
 
 static inline size_t rioWrite(rio *r, const void *buf, size_t len) {
     if (r->flags & RIO_FLAG_WRITE_ERROR) return 0;
