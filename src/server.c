@@ -3791,6 +3791,7 @@ int processCommand(client *c) {
     }
 
     /* Exec the command */
+    /* 如果当前客户端处于正在处理事务阶段 */
     if (c->flags & CLIENT_MULTI &&
         c->cmd->proc != execCommand && c->cmd->proc != discardCommand &&
         c->cmd->proc != multiCommand && c->cmd->proc != watchCommand)

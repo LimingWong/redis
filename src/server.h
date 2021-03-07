@@ -689,6 +689,7 @@ typedef struct multiCmd {
     struct redisCommand *cmd;
 } multiCmd;
 
+/* 客户端用这个结构体保存MULTI/EXEC命令状态 */
 typedef struct multiState {
     /* MULTI命令数组 */
     multiCmd *commands;     /* Array of MULTI commands */
@@ -864,8 +865,8 @@ typedef struct client {
     blockingState bpop;     /* blocking state */
     long long woff;         /* Last write global replication offset. */
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
-    dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
-    list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
+    dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE);客户端感兴趣的channel，key是channel，value是NULL */
+    list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE)；客户端感兴趣的pattern，是一个list，list的node对应一个pubsubpattern的结构体 */
     sds peerid;             /* Cached peer ID. */
     /* 目前客户端在服务器客户端链表中的节点指针 */
     listNode *client_list_node; /* list node in client list */
