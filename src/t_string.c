@@ -57,7 +57,12 @@ static int checkStringLength(client *c, long long size) {
  *
  * If ok_reply is NULL "+OK" is used.
  * If abort_reply is NULL, "$-1" is used. */
+/* setGenericCommand()函数实现了set,setex,psetex,setnx命令 */
+/* flags标记了set命令中的可选项参数
+ * expire */
 
+
+/* 这些set命令的可选项参数以及其意义 */
 #define OBJ_SET_NO_FLAGS 0
 #define OBJ_SET_NX (1<<0)          /* Set if key not exists. */
 #define OBJ_SET_XX (1<<1)          /* Set if key exists. */
@@ -69,24 +74,27 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
     long long milliseconds = 0; /* initialized to avoid any harmness warning */
 
     if (expire) {
+        /* 如果设定了过期时间，计算过期时间 */
         if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
             return;
         if (milliseconds <= 0) {
             addReplyErrorFormat(c,"invalid expire time in %s",c->cmd->name);
             return;
         }
-        if (unit == UNIT_SECONDS) milliseconds *= 1000;
+        if (unit == UNIT_SECONDS) milliseconds *= 1000;/* 单位统一换算成ms */
     }
 
     if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
         (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
     {
+        /* 设置了nx标志但是数据库已经有这个key了；或者设置了xx标志但是数据库中没有这个key，就报错了。 */
         addReply(c, abort_reply ? abort_reply : shared.null[c->resp]);
         return;
     }
+    /* 写入数据库 */
     genericSetKey(c,c->db,key,val,flags & OBJ_SET_KEEPTTL,1);
-    server.dirty++;
-    if (expire) setExpire(c,c->db,key,mstime()+milliseconds);
+    server.dirty++;/* 自从上次保存数据库之后对数据库的修改次数加1 */
+    if (expire) setExpire(c,c->db,key,mstime()+milliseconds);/* 设置key的过期时间 */
     notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
     if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,
         "expire",key,c->db->id);
@@ -94,6 +102,7 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
 }
 
 /* SET key value [NX] [XX] [KEEPTTL] [EX <seconds>] [PX <milliseconds>] */
+/* set命令的实现 */
 void setCommand(client *c) {
     int j;
     robj *expire = NULL;
@@ -142,7 +151,7 @@ void setCommand(client *c) {
         }
     }
 
-    c->argv[2] = tryObjectEncoding(c->argv[2]);
+    c->argv[2] = tryObjectEncoding(c->argv[2]);/* 这里会检查type是不是OBJ_STRING */
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
 
@@ -161,6 +170,7 @@ void psetexCommand(client *c) {
     setGenericCommand(c,OBJ_SET_NO_FLAGS,c->argv[1],c->argv[3],c->argv[2],UNIT_MILLISECONDS,NULL,NULL);
 }
 
+/* get命令 */
 int getGenericCommand(client *c) {
     robj *o;
 
@@ -180,6 +190,7 @@ void getCommand(client *c) {
     getGenericCommand(c);
 }
 
+/* getset命令 */
 void getsetCommand(client *c) {
     if (getGenericCommand(c) == C_ERR) return;
     c->argv[2] = tryObjectEncoding(c->argv[2]);
@@ -188,12 +199,13 @@ void getsetCommand(client *c) {
     server.dirty++;
 }
 
+/* setrange 命令 */
 void setrangeCommand(client *c) {
     robj *o;
     long offset;
     sds value = c->argv[3]->ptr;
 
-    if (getLongFromObjectOrReply(c,c->argv[2],&offset,NULL) != C_OK)
+    if (getLongFromObjectOrReply(c,c->argv[2],&offset,NULL) != C_OK) /* 这里会检查类型是不是OBJ_STRING */
         return;
 
     if (offset < 0) {
@@ -248,13 +260,14 @@ void setrangeCommand(client *c) {
     addReplyLongLong(c,sdslen(o->ptr));
 }
 
+/* getrange命令 */
 void getrangeCommand(client *c) {
     robj *o;
     long long start, end;
     char *str, llbuf[32];
     size_t strlen;
 
-    if (getLongLongFromObjectOrReply(c,c->argv[2],&start,NULL) != C_OK)
+    if (getLongLongFromObjectOrReply(c,c->argv[2],&start,NULL) != C_OK)/* 这里会检查类型是不是OBJ_STRING */
         return;
     if (getLongLongFromObjectOrReply(c,c->argv[3],&end,NULL) != C_OK)
         return;
@@ -289,6 +302,7 @@ void getrangeCommand(client *c) {
     }
 }
 
+/* mget命令 */
 void mgetCommand(client *c) {
     int j;
 
@@ -307,6 +321,7 @@ void mgetCommand(client *c) {
     }
 }
 
+/* mset命令的实现 */
 void msetGenericCommand(client *c, int nx) {
     int j;
 
@@ -381,14 +396,17 @@ void incrDecrCommand(client *c, long long incr) {
     addReply(c,shared.crlf);
 }
 
+/* incr命令的实现 */
 void incrCommand(client *c) {
     incrDecrCommand(c,1);
 }
 
+/* decr命令的实现 */
 void decrCommand(client *c) {
     incrDecrCommand(c,-1);
 }
 
+/* incrby命令实现 */
 void incrbyCommand(client *c) {
     long long incr;
 
@@ -396,6 +414,7 @@ void incrbyCommand(client *c) {
     incrDecrCommand(c,incr);
 }
 
+/* decrby命令实现 */
 void decrbyCommand(client *c) {
     long long incr;
 
@@ -403,6 +422,7 @@ void decrbyCommand(client *c) {
     incrDecrCommand(c,-incr);
 }
 
+/* incrbyfloat命令 */
 void incrbyfloatCommand(client *c) {
     long double incr, value;
     robj *o, *new, *aux1, *aux2;
@@ -440,6 +460,7 @@ void incrbyfloatCommand(client *c) {
     decrRefCount(aux2);
 }
 
+/* append命令 */
 void appendCommand(client *c) {
     size_t totlen;
     robj *o, *append;
@@ -473,6 +494,7 @@ void appendCommand(client *c) {
     addReplyLongLong(c,totlen);
 }
 
+/* strlen命令 */
 void strlenCommand(client *c) {
     robj *o;
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
@@ -485,6 +507,7 @@ void strlenCommand(client *c) {
  *
  * STRALGO <algorithm> ... arguments ... */
 void stralgoLCS(client *c);     /* This implements the LCS algorithm. */
+/* stralgo命令的实现：这个命令实现一些复杂的字符串算法，目前仅实现了LCS算法，用于计算字符串之间的相似度 */
 void stralgoCommand(client *c) {
     /* Select the algorithm. */
     if (!strcasecmp(c->argv[1]->ptr,"lcs")) {
