@@ -151,6 +151,7 @@ void setCommand(client *c) {
         }
     }
 
+    /* 在这里对输入的value对象进行编码，会选择最合适的编码。 */
     c->argv[2] = tryObjectEncoding(c->argv[2]);/* 这里会检查type是不是OBJ_STRING */
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
