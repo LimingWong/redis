@@ -466,7 +466,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
     int processed = 0, numevents;
 
     /* Nothing to do? return ASAP */
-    /* 没有任何事务需要处理，立刻返回 */
+    /* 没有任何事务需要处理，立刻返回；以下的设置是直接屏蔽了文件事件和时间事件，所以不做任何处理。 */
     if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
 
     /* Note that we want call select() even if there are no
@@ -537,14 +537,16 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         /* tvp==NULL的时候，可以阻塞，直到有文件事件发生
          * tvp->tv_sec == tvp->tv_usec == 0的时候，测试所有的文件描述符立即返回，不阻塞
          * tvp->tv_sec != 0 || tvp->tv_usec != 0的时候，等待特定的时间再返回。 */
-        /* 文件事件轮询，调用多路复用api*/
-        /* 将已经准备好的fd和对应的文件事件存入fired数组中，返回的是已经准备好的文件事件 */
+        /* 文件事件轮询，调用多路复用api */
+        /* 将已经准备好的fd和对应的文件事件存入fired数组中，返回的是已经准备好的文件事件个数；
+         * 因为这个函数可能阻塞，所以被称为"sleep"。*/
         numevents = aeApiPoll(eventLoop, tvp);
 
         /* After sleep callback. */
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
             eventLoop->aftersleep(eventLoop);
 
+        /* 如果numevents != 0, 说明有新的读写事件待处理，进入循环处理。 */
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
             int mask = eventLoop->fired[j].mask; //已经就绪的文件事件类型。

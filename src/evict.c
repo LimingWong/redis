@@ -53,7 +53,7 @@
 #define EVPOOL_SIZE 16
 #define EVPOOL_CACHED_SDS_SIZE 255  //定义下面结构体中cached的大小
 struct evictionPoolEntry {
-    unsigned long long idle;    /* Object idle time (inverse frequency for LFU) */
+    unsigned long long idle;    /* Object idle time (inverse frequency for LFU)，对象空转时间 */
     sds key;                    /* Key name. */
     sds cached;                 /* Cached SDS object for key name.缓存大小小于255的key name的对象 */
     int dbid;                   /* Key DB number. */
@@ -136,7 +136,7 @@ unsigned long long estimateObjectIdleTime(robj *o) {
  *  */
 
 /* Create a new eviction pool. */
-/* 创建一个新的回收池,默认大小为16 */
+/* 创建一个新的回收池,默认大小为16；这个函数在服务器启动进行初始化配置时就会调用。 */
 void evictionPoolAlloc(void) {
     struct evictionPoolEntry *ep;
     int j;

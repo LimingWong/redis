@@ -541,7 +541,10 @@ robj *tryObjectEncoding(robj *o) {
          * Note that we avoid using shared integers when maxmemory is used
          * because every object needs to have a private LRU field for the LRU
          * algorithm to work well. */
-        /* 这个对象可以编码为整型数。尝试使用共享对象。 */
+        /* 这个对象可以编码为整型数。尝试使用共享对象，在以下两种情况下可以尝试使用共享对象：
+         * 1. 没有设置最大内存，此时内存回收策略失效；
+         * 2. 内存回收策略不是LRU和LFU；
+         * 满足以上情况之一，且编码的整型数在0-9999之间，就可以使用共享对象。*/
         if ((server.maxmemory == 0 ||
             !(server.maxmemory_policy & MAXMEMORY_FLAG_NO_SHARED_INTEGERS)) &&
             value >= 0 &&
@@ -551,7 +554,7 @@ robj *tryObjectEncoding(robj *o) {
             incrRefCount(shared.integers[value]);
             return shared.integers[value];
         } else {
-            /* 不能使用共享对象 */
+            /* 不能使用共享对象，在这里编码为OBJ_ENCODING_INT，数据存储在ptr指针中。 */
             if (o->encoding == OBJ_ENCODING_RAW) {
                 /* RAW编码的将数据存储在指针中 */
                 sdsfree(o->ptr);

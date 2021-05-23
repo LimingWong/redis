@@ -1557,10 +1557,12 @@ int handleClientsWithPendingWrites(void) {
         if (c->flags & CLIENT_PROTECTED) continue;
 
         /* Try to write buffers to the client socket. */
+        /* 尝试向客户端套接字写数据*/
         if (writeToClient(c,0) == C_ERR) continue;
 
         /* If after the synchronous writes above we still have data to
          * output to the client, we need to install the writable handler. */
+        /* 经过上面的同步写之后如果还有待写的数据，需要安装写事件处理函数*/
         if (clientHasPendingReplies(c)) {
             int ae_barrier = 0;
             /* For the fsync=always policy, we want that a given FD is never
