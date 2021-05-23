@@ -55,7 +55,8 @@ void updateLFU(robj *val) {
 /* Low level key lookup API, not actually called directly from commands
  * implementations that should instead rely on lookupKeyRead(),
  * lookupKeyWrite() and lookupKeyReadWithFlags(). */
-/* 底层的查找key的api，并不从实际的命令实现中调用这个函数，实际命令实现中应该调用lookipKeyRead()，lookupKeyWrite()和lookupReadWithFlags()这三个函数。 */
+/* 底层的查找key的api，并不从实际的命令实现中调用这个函数，实际命令实现中应该调用
+ * lookipKeyRead()，lookupKeyWrite()和lookupReadWithFlags()这三个函数。 */
 robj *lookupKey(redisDb *db, robj *key, int flags) {
     dictEntry *de = dictFind(db->dict,key->ptr);
     if (de) {

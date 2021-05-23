@@ -1761,6 +1761,11 @@ void databasesCron(void) {
  * info or not using the 'update_daylight_info' argument. Normally we update
  * such info only when calling this function from serverCron() but not when
  * calling it from call(). */
+/* 在这里更新unix时间的全局变量，这些时戳并不需要很精确，这样做比调用time(NULL)要快很多。
+ *
+ * 由于每个命令在call函数中调用时，都会调用此函数，因此这个函数应当要执行快一些。所以，
+ * 要根据情况决定要不要更新夏令时。通常情况下，我们在调用serverCron()的时候更新夏令时（将update_daylight_info=1）
+ * 而在执行call()函数时不更新（update_daylight_info=0）*/
 void updateCachedTime(int update_daylight_info) {
     server.ustime = ustime();              // us
     server.mstime = server.ustime / 1000;  // ms 
@@ -3375,11 +3380,10 @@ void call(client *c, int flags) {
 
     /* Call the command. */
     dirty = server.dirty;
-    updateCachedTime(0);
+    updateCachedTime(0); /* 更新全局缓存的时间（server.ustime, server.mstime, server.unixtime），不更新夏令时时间。*/
     start = server.ustime;
-    /* 调用执行命令 */
-    c->cmd->proc(c);
-    duration = ustime()-start;
+    c->cmd->proc(c); /* 调用执行命令 */
+    duration = ustime()-start; /* 命令执行耗时多少us */
     dirty = server.dirty-dirty;
     if (dirty < 0) dirty = 0;
 
@@ -3659,6 +3663,9 @@ int processCommand(client *c) {
      * the event loop since there is a busy Lua script running in timeout
      * condition, to avoid mixing the propagation of scripts with the
      * propagation of DELs due to eviction. */
+    /* 执行内存回收策略
+     *
+     * 如果当前有lua脚本执行超时了，那么先不进行内存回收操作。*/
     if (server.maxmemory && !server.lua_timedout) {
         int out_of_memory = freeMemoryIfNeededAndSafe() == C_ERR;
         /* freeMemoryIfNeeded may flush slave output buffers. This may result

@@ -2296,6 +2296,9 @@ sds getAllClientsInfoString(int type) {
  * currently set name: the client will remain unnamed.
  *
  * This function is also used to implement the HELLO SETNAME option. */
+/* 这个函数实现了CLIENT SETNAME和HELLO SETNAME 命令。返回:
+ * C_OK: 函数调用成功
+ * C_ERR：函数调用失败*/
 int clientSetNameOrReply(client *c, robj *name) {
     int len = sdslen(name->ptr);
     char *p = name->ptr;
@@ -2450,6 +2453,7 @@ NULL
         }
 
         /* Iterate clients killing all the matching clients. */
+        /* 遍历所有客户端，并kill掉。*/
         listRewind(server.clients,&li);
         while ((ln = listNext(&li)) != NULL) {
             client *client = listNodeValue(ln);
@@ -2461,8 +2465,10 @@ NULL
 
             /* Kill it. */
             if (c == client) {
+				/* 如果当前客户端也在删除之列，先进行标记，不删除。*/
                 close_this_client = 1;
             } else {
+              /* 不是本客户端就可以直接删除掉。*/
                 freeClient(client);
             }
             killed++;
@@ -2470,16 +2476,19 @@ NULL
 
         /* Reply according to old/new format. */
         if (c->argc == 3) {
+          	/* 旧格式，仅适用于<ip:port>格式*/
             if (killed == 0)
                 addReplyError(c,"No such client");
             else
                 addReply(c,shared.ok);
         } else {
+          /* 新格式直接返回删除的客户端的数量。*/
             addReplyLongLong(c,killed);
         }
 
         /* If this client has to be closed, flag it as CLOSE_AFTER_REPLY
          * only after we queued the reply to its output buffers. */
+        /* 如果当前客户端要被kill， 在我们将返回值添加到它的输出缓冲区之后，把它标记为CLOSE_AFTER_REPLY*/
         if (close_this_client) c->flags |= CLIENT_CLOSE_AFTER_REPLY;
     } else if (!strcasecmp(c->argv[1]->ptr,"unblock") && (c->argc == 3 ||
                                                           c->argc == 4))
@@ -3017,6 +3026,11 @@ void flushSlavesOutputBuffers(void) {
  * time left for the previous duration. However if the duration is smaller
  * than the time left for the previous pause, no change is made to the
  * left duration. */
+
+/* 将normal和 pub/sub类型的客户端，暂停 end 毫秒，暂停期间，来自客户端的命令不会被执行。
+ * 在暂停期间，数据不会被改变。所以这个函数可以在服务器升级期间使用，而同时slaves还可以处理数据。
+ *
+ * 这个函数也被用于redis cluster的故障转移过程，这个函数总是会成功。即使已经暂停了客户端。*/
 void pauseClients(mstime_t end) {
     if (!server.clients_paused || end > server.clients_pause_end_time)
         server.clients_pause_end_time = end;
@@ -3037,12 +3051,14 @@ int clientsArePaused(void) {
 
         /* Put all the clients in the unblocked clients queue in order to
          * force the re-processing of the input buffer if any. */
+        /* 将所有的客户端添加到unblock 客户端队列中，这样做是为了强制重新处理输出缓冲区*/
         listRewind(server.clients,&li);
         while ((ln = listNext(&li)) != NULL) {
             c = listNodeValue(ln);
 
             /* Don't touch slaves and blocked clients.
              * The latter pending requests will be processed when unblocked. */
+            /* 不要处理slave客户端和阻塞的客户端，阻塞的客户端积压的请求会在unblock之后处理*/
             if (c->flags & (CLIENT_SLAVE|CLIENT_BLOCKED)) continue;
             queueClientForReprocessing(c);
         }

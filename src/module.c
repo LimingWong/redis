@@ -6600,6 +6600,13 @@ size_t RM_MallocSize(void* ptr){
  * Exactly 1 - Memory limit reached.
  * Greater 1 - More memory used than the configured limit.
  */
+/* 获取当前内存使用率（相对于设定的maxmemory）,
+ *
+ * 返回值：
+ * 0： 当前没有设置内存限制
+ * 0-1：内存占用的比值
+ * 正好1：达到了内存的最大内存限制
+ * 超过1：使用的内存超过了配置的限制。*/
 float RM_GetUsedMemoryRatio(){
     float level;
     getMaxmemoryState(NULL, NULL, NULL, &level);

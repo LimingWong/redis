@@ -68,8 +68,9 @@ static struct evictionPoolEntry *EvictionPoolLRU;
 /* Return the LRU clock, based on the clock resolution. This is a time
  * in a reduced-bits format that can be used to set and check the
  * object->lru field of redisObject structures. */
-/* 返回LRU时钟，当前的时刻的一个标识；计算方法：当前时间（单位为分钟）取后24位 */
-/* 这个函数基本只用于server.lruclock的更新 */
+/* 返回LRU时钟，当前的时刻的一个标识；计算方法：当前时间（单位为秒）取后24位 */
+/* 这个函数会进行系统调用。因此，大部分情况下这个函数只用于全局的server.lruclock更新. 其他
+ * 函数直接使用server.lru.clock*/
 unsigned int getLRUClock(void) {
     return (mstime()/LRU_CLOCK_RESOLUTION) & LRU_CLOCK_MAX;
 }
@@ -78,7 +79,10 @@ unsigned int getLRUClock(void) {
  * If the current resolution is lower than the frequency we refresh the
  * LRU clock (as it should be in production servers) we return the
  * precomputed value, otherwise we need to resort to a system call. */
-/* 返回当前的lru时钟(分钟)，用于更新对象的lru属性 */
+/* 这个函数用于获取当前的LRU时钟，如果当前的分辨率（1000）低于现在的Lru时钟刷新频率(1000/server.hz)，
+ * 那么直接使用缓存的lru时钟（server.lruclock）；否则，进行系统调用，计算最新的lru时钟。
+ * 默认情况下，server.lruclock每秒刷新10次（server.hz = 10），而分辨率是1000，即秒级。如果要求更高
+ * 的分辨率（小于秒级，减小LRU_CLOCK_RESOLUTION）可能就需要每次进行提供系统调用更新server.lruclock*/
 unsigned int LRU_CLOCK(void) {
     unsigned int lruclock;
     if (1000/server.hz <= LRU_CLOCK_RESOLUTION) {
@@ -425,24 +429,28 @@ size_t freeMemoryGetNotCountedMemory(void) {
  * 'total': 当前使用的总内存，不管返回C_ERR还是C_OK都会被计算
  * 'logical': 减去slaves/AOF缓存空间之后的内存空间，只有在返回C_ERR的时候才会被计算
  * 'tofree': 为了满足最大内存的设置而需要释放的内存空间大小，只有在返回C_ERR的时候才会被计算
- * 'level'： 通常情况下这是一个在0-1之间的浮点数，返回当前使用内存占设置的最大的内存的比例，如果没有设置最大内存则这个值设为0，不管返回C_ERR还是C_OK都会被计算*/
+ * 'level'： 通常情况下这是一个在0-1之间的浮点数，返回当前使用内存占设置的最大的内存的比例，如果没有设置最大内存则这个值设为0，
+ * 不管返回C_ERR还是C_OK都会被计算*/
 int getMaxmemoryState(size_t *total, size_t *logical, size_t *tofree, float *level) {
     size_t mem_reported, mem_used, mem_tofree;
 
     /* Check if we are over the memory usage limit. If we are not, no need
      * to subtract the slaves output buffers. We can just return ASAP. */
-    mem_reported = zmalloc_used_memory();
-    if (total) *total = mem_reported;
+    mem_reported = zmalloc_used_memory();  /* 当前redis所使用的总内存*/
+    if (total) *total = mem_reported; /* 如果传入了total，那么赋给它*/
 
     /* We may return ASAP if there is no need to compute the level. */
+    /* 在以下两种情况都满足的情况下，不用计算level：
+     * 1. 当前内存策略满足要求（没有设置最大内存或者当前使用的内存小于设置的内存）
+     * 2. 没有设置level*/
     int return_ok_asap = !server.maxmemory || mem_reported <= server.maxmemory;
     if (return_ok_asap && !level) return C_OK;
 
     /* Remove the size of slaves output buffers and AOF buffer from the
      * count of used memory. */
     mem_used = mem_reported;
-    size_t overhead = freeMemoryGetNotCountedMemory();
-    mem_used = (mem_used > overhead) ? mem_used-overhead : 0;
+    size_t overhead = freeMemoryGetNotCountedMemory();  /* 获取slave输入缓冲区和AOF缓冲区所占用的内存大小。*/
+    mem_used = (mem_used > overhead) ? mem_used-overhead : 0; /* 从已使用的内存中减去这一部分 */
 
     /* Compute the ratio of memory usage. */
     if (level) {
@@ -522,6 +530,7 @@ int freeMemoryIfNeeded(void) {
     /* When clients are paused the dataset should be static not just from the
      * POV of clients not being able to write, but also from the POV of
      * expires and evictions of keys not being performed. */
+    /* 当客户端被暂停，数据集无法被处理*/
     if (clientsArePaused()) return C_OK;
     if (getMaxmemoryState(&mem_reported,NULL,&mem_tofree,NULL) == C_OK)
         return C_OK;
