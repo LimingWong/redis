@@ -590,7 +590,7 @@ robj *tryObjectEncoding(robj *o) {
      * We do that only for relatively large strings as this branch
      * is only entered if the length of the string is greater than
      * OBJ_ENCODING_EMBSTR_SIZE_LIMIT. */
-    /* 到这一步说明无法压缩该字符串对象，那么尝试去掉sds字符串后面的空间 */
+    /* 到这一步说明无法压缩该字符串对象，那么尝试去掉sds字符串后面超过10%的空闲空间 */
     trimStringObjectIfNeeded(o);
 
     /* Return the original object. */
