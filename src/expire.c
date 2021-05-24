@@ -297,6 +297,7 @@ void activeExpireCycle(int type) {
             /* We can't block forever here even if there are many keys to
              * expire. So after a given amount of milliseconds return to the
              * caller waiting for the other active expire cycle. */
+            /* 我们不能永远阻塞在这里即使有很多key过期。在给定的时间到了之后，应该跳出这个函数等待下一次调用。*/
             if ((iteration & 0xf) == 0) { /* check once every 16 iterations. */
                 elapsed = ustime()-start;
                 if (elapsed > timelimit) {

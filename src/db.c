@@ -1344,7 +1344,8 @@ int keyIsExpired(redisDb *db, robj *key) {
  *
  * The return value of the function is 0 if the key is still valid,
  * otherwise the function returns 1 if the key is expired. */
-/* 当我门需要操作一个给定的key的时候需要调用这个函数，因为有的在数据库中的key可能已经过期了。 */
+/* 当我门需要操作一个给定的key的时候需要调用这个函数，因为有的在数据库中的key可能已经过期了。
+ * 函数返回0代表key还有效，返回1代表1已经过期。*/
 int expireIfNeeded(redisDb *db, robj *key) {
     if (!keyIsExpired(db,key)) return 0;
 
