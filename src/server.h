@@ -669,7 +669,6 @@ typedef struct clientReplyBlock {
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
 /* redis数据库的表示。服务器上一般有多个数据库，默认情况下按编号0-15，客户端默认使用的数据库是0号数据库
- *  */
 typedef struct redisDb {
     dict *dict;                 /* The keyspace for this DB， 数据库的键空间 */
     dict *expires;              /* Timeout of keys with a timeout set；已经过期的键空间 */

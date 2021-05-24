@@ -2125,7 +2125,7 @@ void readQueryFromClient(connection *conn) {
             return;
         }
     } else if (nread == 0) {
-        /* 读取的时候遇到了文件尾，说明客户端关闭了连接。 */
+        /* 读取的时候遇到了文件尾，说明客户端关闭了连接;客户端执行了exit命令或者使用了CTRL+C关闭了shell等。 */
         serverLog(LL_VERBOSE, "Client closed connection");
         freeClientAsync(c);
         return;

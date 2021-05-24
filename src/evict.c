@@ -130,10 +130,7 @@ unsigned long long estimateObjectIdleTime(robj *o) {
  * one key that can be evicted, if there is at least one key that can be
  * evicted in the whole database.
  * 
- * LRU近似算法
- * 
- * 
- *  */
+ * LRU近似算法*/
 
 /* Create a new eviction pool. */
 /* 创建一个新的回收池,默认大小为16 */
@@ -163,9 +160,9 @@ void evictionPoolAlloc(void) {
  *  */
 void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evictionPoolEntry *pool) {
     int j, k, count;
-    dictEntry *samples[server.maxmemory_samples];
+    dictEntry *samples[server.maxmemory_samples]; // 默认采样5个key，至于原因，查看redis.conf文档。
 
-    /* 在采样字典中随机采样个数为server.maxmemory_samples个entry，count为实际的采样个数 */
+    /* 在采样字典中随机采样个数为server.maxmemory_samples（默认为5）个entry，count为实际的采样个数 */
     count = dictGetSomeKeys(sampledict,samples,server.maxmemory_samples);
     for (j = 0; j < count; j++) {
         unsigned long long idle;
@@ -223,12 +220,13 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
                pool[k].key &&
                pool[k].idle < idle) k++;
         if (k == 0 && pool[EVPOOL_SIZE-1].key != NULL) {
-            /* 这种情况下不能插入，因为已有的回收池中最小的元素的idle都比待插入的元素的idle要大 */
+            /* 当前回收池已满，且池中所有key的idle都大于等于待插入的key；这种情况下不能插入，
+             * 跳过这个key，尝试插下一个key。 */
             /* Can't insert if the element is < the worst element we have
              * and there are no empty buckets. */
             continue;
         } else if (k < EVPOOL_SIZE && pool[k].key == NULL) {
-            /* 这种情况下，k右边没有元素，可以直接插入在当前位置。 */
+            /* 这种情况下，k位置没有元素，可以直接插入在当前位置。 */
             /* Inserting into empty position. No setup needed before insert. */
         } else {
             /* Inserting in the middle. Now k points to the first element
@@ -240,18 +238,20 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
                  * all the elements from k to end to the right. */
 
                 /* Save SDS before overwriting. */
+                /* 保存最后一个位置的cached name */
                 sds cached = pool[EVPOOL_SIZE-1].cached;
-                memmove(pool+k+1,pool+k,
-                    sizeof(pool[0])*(EVPOOL_SIZE-k-1));
+                /* 将k以后的元素往右移动一个单位，注意即使有区间重合，memmove函数也会保证不覆盖数据。因为它会先复制数据。 */
+                memmove(pool+k+1,pool+k,                     
+                    sizeof(pool[0])*(EVPOOL_SIZE-k-1));  
                 pool[k].cached = cached;
             } else {
-                /* 右边没有空间，左移，相当于丢掉了第一个元素 */
+                /* 右边没有空间，左移，丢掉第一个元素，插在k-1的位置。 */
                 /* No free space on right? Insert at k-1 */
                 k--;
                 /* Shift all elements on the left of k (included) to the
                  * left, so we discard the element with smaller idle time. */
                 sds cached = pool[0].cached; /* Save SDS before overwriting. */
-                if (pool[0].key != pool[0].cached) sdsfree(pool[0].key);
+                if (pool[0].key != pool[0].cached) sdsfree(pool[0].key);  /* 这种情况是由于key的长度大于EVPOOL_CACHED_SDS_SIZE导致的。 */
                 memmove(pool,pool+1,sizeof(pool[0])*k);
                 pool[k].cached = cached;
             }
@@ -512,7 +512,6 @@ int getMaxmemoryState(size_t *total, size_t *logical, size_t *tofree, float *lev
  * was freed to return back under the limit, the function returns C_ERR. */
 /* 如果当前使用的内存没有超过规定的最大内存或者超过最大内存了但是释放掉了足够的空间，那么这个函数返回C_OK
  * 否则如果超过内存的限制但是没有释放足够的空间，就返回C_ERR。 */
-/* TODO:还没读完这个函数 */
 int freeMemoryIfNeeded(void) {
     int keys_freed = 0;
     /* By default replicas should ignore maxmemory
@@ -611,6 +610,7 @@ int freeMemoryIfNeeded(void) {
             /* When evicting a random key, we try to evict a key for
              * each DB, so we use the static 'next_db' variable to
              * incrementally visit all DBs. */
+            /* 当策略为随机删除的时候，我们每次删除一个数据库的key。使用静态变量next_db来递增式的访问所有数据库。 */
             for (i = 0; i < server.dbnum; i++) {
                 j = (++next_db) % server.dbnum;
                 db = server.db+j;
@@ -626,6 +626,7 @@ int freeMemoryIfNeeded(void) {
         }
 
         /* Finally remove the selected key. */
+        /* 如果上面找到了一个可以删除的key，在这里删除 */
         if (bestkey) {
             db = server.db+bestdbid;
             robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
