@@ -1,6 +1,0 @@
-C:/Users/limin/OneDrive/study/redis/deps/hiredis/out/build/x64-Debug/CMakeFiles/hiredis.dir
-C:/Users/limin/OneDrive/study/redis/deps/hiredis/out/build/x64-Debug/CMakeFiles/install/local.dir
-C:/Users/limin/OneDrive/study/redis/deps/hiredis/out/build/x64-Debug/CMakeFiles/install.dir
-C:/Users/limin/OneDrive/study/redis/deps/hiredis/out/build/x64-Debug/CMakeFiles/edit_cache.dir
-C:/Users/limin/OneDrive/study/redis/deps/hiredis/out/build/x64-Debug/CMakeFiles/rebuild_cache.dir
-C:/Users/limin/OneDrive/study/redis/deps/hiredis/out/build/x64-Debug/CMakeFiles/list_install_components.dir

@@ -2742,6 +2742,9 @@ int listenToPort(int port, int *fds, int *count) {
             int unsupported = 0;
             /* Bind * for both IPv6 and IPv4, we enter here only if
              * server.bindaddr_count == 0. */
+            /* 只有在没有指定地址的时候（server.bindaddr_count == 0），才为ip4和ip6的所有地址分别创建一个监听描述符 */
+
+            /* 绑定ip6地址 */
             fds[*count] = anetTcp6Server(server.neterr,port,NULL,
                 server.tcp_backlog);
             if (fds[*count] != ANET_ERR) {
@@ -2754,6 +2757,7 @@ int listenToPort(int port, int *fds, int *count) {
 
             if (*count == 1 || unsupported) {
                 /* Bind the IPv4 address as well. */
+                /* 绑定IP4地址 */
                 fds[*count] = anetTcpServer(server.neterr,port,NULL,
                     server.tcp_backlog);
                 if (fds[*count] != ANET_ERR) {
@@ -2770,10 +2774,12 @@ int listenToPort(int port, int *fds, int *count) {
             if (*count + unsupported == 2) break;
         } else if (strchr(server.bindaddr[j],':')) {
             /* Bind IPv6 address. */
+            /* IPv6地址 */
             fds[*count] = anetTcp6Server(server.neterr,port,server.bindaddr[j],
                 server.tcp_backlog);
         } else {
             /* Bind IPv4 address. */
+            /* IPv4地址 */
             fds[*count] = anetTcpServer(server.neterr,port,server.bindaddr[j],
                 server.tcp_backlog);
         }
@@ -2788,6 +2794,7 @@ int listenToPort(int port, int *fds, int *count) {
                     continue;
             return C_ERR;
         }
+        /* 设定监听套接字为非阻塞式 */
         anetNonBlock(NULL,fds[*count]);
         (*count)++;
     }

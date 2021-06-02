@@ -1073,6 +1073,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     while(max--) {
         /* 这是accept函数的装饰函数，这里服务器开始接受连接，最多接受1000个连接 */
+        /* 由于监听套接字是非阻塞式的，这里在调用accept的时候不会阻塞 */
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
