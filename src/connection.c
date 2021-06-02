@@ -271,8 +271,7 @@ static const char *connSocketGetLastError(connection *conn) {
     return strerror(conn->last_errno);
 }
 
-/* 这是connection->type->ae_handler指向的默认函数，这个函数是套接字类型连接对应的fd的默认回调函数，
- * 将两种事件（读写）集中在了一起 */
+/* 建立连接之后，这个函数是已连接fd上的默认的回调函数 */
 static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientData, int mask)
 {
     UNUSED(el);

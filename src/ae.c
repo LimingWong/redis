@@ -507,6 +507,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 tvp->tv_usec = 0;
             }
         } else {
+         	 /* 注意： 这个分支不可能执行，因为一直会有serverCron这个时间事件。*/
             /* If we have to check for events but need to return
              * ASAP because of AE_DONT_WAIT we need to set the timeout
              * to zero */
@@ -546,7 +547,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
             eventLoop->aftersleep(eventLoop);
 
-        /* 如果numevents != 0, 说明有新的读写事件待处理，进入循环处理。 */
+        /* 如果numevents != 0, 有文件事件发生，进入循环开始处理。 */
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
             int mask = eventLoop->fired[j].mask; //已经就绪的文件事件类型。
@@ -606,7 +607,6 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                     fired++;
                 }
             }
-
             processed++;
         }
     }

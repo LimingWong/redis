@@ -37,3 +37,6 @@ Makefile.dep
 .ccls
 .ccls-cache/*
 compile_commands.json
+.idea
+.vs
+MyUnderstandProject.udb
