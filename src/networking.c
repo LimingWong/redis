@@ -124,7 +124,7 @@ client *createClient(connection *conn) {
         connSetPrivateData(conn, c);
     }
 
-    /* 默认指向0号数据库 */
+    /* 对c进行初始化 */
     selectDb(c,0);
     uint64_t client_id = ++server.next_client_id;
     c->id = client_id;
@@ -1051,7 +1051,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
      */
     /* 调用connAccept成功后conn->state会变成CONN_STATE_CONNECTED。
      * 这个函数（clientAcceptHandler）最主要的功能是对处于保护模式且没有设定服务器密码且没有在配置文件中绑定任何网络接口的服务器进行保护，
-     * 限制回环外的客户端连接这个服务器。 */
+     * 限制回环外的客户端连接这个服务器，如果不是回环内的ip地址，那么就会释放这个客户端。 */
     if (connAccept(conn, clientAcceptHandler) == C_ERR) {
         char conninfo[100];
         if (connGetState(conn) == CONN_STATE_ERROR)

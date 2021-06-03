@@ -16,7 +16,7 @@ release_hdr := $(shell sh -c './mkreleasehdr.sh')
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 uname_M := $(shell sh -c 'uname -m 2>/dev/null || echo not')
 OPTIMIZATION?=-O0  # 不优化
-DEPENDENCY_TARGETS=linenoise # 其他依赖安装到系统中。
+DEPENDENCY_TARGETS=hiredis lua linenoise # 其他依赖安装到系统中。
 NODEPS:=clean distclean
 
 # Default settings
@@ -329,7 +329,7 @@ clean:
 .PHONY: clean
 
 distclean: clean
-	# -(cd ../deps && $(MAKE) distclean)
+	-(cd ../deps && $(MAKE) distclean)
 	-(rm -f .make-*)
 
 .PHONY: distclean

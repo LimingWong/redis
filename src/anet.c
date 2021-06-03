@@ -119,6 +119,7 @@ int anetKeepAlive(char *err, int fd, int interval)
 
     /* Send first probe after interval. */
     /* 在interval秒之后（默认是7200秒，没什么用)发送第一个探针 */
+    /* 这里就是俗称的心跳包 */
     val = interval;
     if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
         anetSetError(err, "setsockopt TCP_KEEPIDLE: %s\n", strerror(errno));

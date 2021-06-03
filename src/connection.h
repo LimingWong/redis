@@ -107,7 +107,7 @@ struct connection {
  */
 
 static inline int connAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
-    return conn->type->accept(conn, accept_handler);
+    return conn->type->accept(conn, accept_handler);  /* 如果连接是socket连接，这里调用的是connSocketAccept. */
 }
 
 /* Establish a connection.  The connect_handler will be called when the connection
@@ -169,7 +169,7 @@ static inline int connSetWriteHandler(connection *conn, ConnectionCallbackFunc f
  * If NULL, the existing handler is removed.
  */
 static inline int connSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
-    return conn->type->set_read_handler(conn, func);
+    return conn->type->set_read_handler(conn, func);  /* 如果connnection是socket类型，这里调用的是connSocketSetReadHandler */
 }
 
 /* Set a write handler, and possibly enable a write barrier, this flag is
