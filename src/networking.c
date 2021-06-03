@@ -262,7 +262,7 @@ int prepareClientToWrite(client *c) {
     if ((c->flags & CLIENT_MASTER) &&
         !(c->flags & CLIENT_MASTER_FORCE_REPLY)) return C_ERR;
 
-    /* 用于AOF加载的伪客户端，直接返回err*/
+    /* 伪客户端，直接返回err*/
     if (!c->conn) return C_ERR; /* Fake client for AOF loading. */
 
     /* Schedule the client to write the output buffers to the socket, unless
@@ -2012,7 +2012,7 @@ void processInputBuffer(client *c) {
         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
         /* Determine request type when unknown. */
-        /* 判断请求是哪种类型
+        /* 当客户端第一个发请求的时候，在这里确定请求的类型。
          * 简单说内联请求是TELNET发送来的, 发送的命令不遵守resp格式
          * 而多条请求是普通redis客户端发送来的，遵守resp格式 */
         if (!c->reqtype) {
