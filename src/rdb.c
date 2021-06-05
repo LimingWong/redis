@@ -2600,6 +2600,7 @@ void bgsaveCommand(client *c) {
      * is in progress. Instead of returning an error a BGSAVE gets scheduled. */
     if (c->argc > 1) {
         if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"schedule")) {
+            /* 命令中设置了schedule */
             schedule = 1;
         } else {
             addReply(c,shared.syntaxerr);
@@ -2611,12 +2612,16 @@ void bgsaveCommand(client *c) {
     rsiptr = rdbPopulateSaveInfo(&rsi);
 
     if (server.rdb_child_pid != -1) {
+        /* 已经有一个rdb子进程在工作，返回错误 */
         addReplyError(c,"Background save already in progress");
     } else if (hasActiveChildProcess()) {
+        /* 如果有aof重写子进程或者module子进程并且设置了schedule，那么设置server.rdb_bgsave_scheduled标志
+         * 这样程序会在合适的时间在serverCron中再次尝试子进程rdb持久化 */
         if (schedule) {
             server.rdb_bgsave_scheduled = 1;
             addReplyStatus(c,"Background saving scheduled");
         } else {
+            /* 如果没有设置schedule，直接报错 */
             addReplyError(c,
             "Another child process is active (AOF?): can't BGSAVE right now. "
             "Use BGSAVE SCHEDULE in order to schedule a BGSAVE whenever "
