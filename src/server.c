@@ -5028,6 +5028,7 @@ int checkForSentinelMode(int argc, char **argv) {
 }
 
 /* Function called at startup to load RDB or AOF file in memory. */
+/* 在启动的时候调用，用来加载RDB或者AOF文件到内存中 */
 void loadDataFromDisk(void) {
     long long start = ustime();
     if (server.aof_state == AOF_ON) {
