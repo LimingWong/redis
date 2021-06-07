@@ -1628,7 +1628,7 @@ int rewriteAppendOnlyFileBackground(void) {
         }
         serverLog(LL_NOTICE,
             "Background append only file rewriting started by pid %d",childpid);
-        server.aof_rewrite_scheduled = 0;
+        server.aof_rewrite_scheduled = 0;  // 如果成功fork了子进程，那么重置这个状态
         server.aof_rewrite_time_start = time(NULL);
         server.aof_child_pid = childpid;
         /* We set appendseldb to -1 in order to force the next call to the

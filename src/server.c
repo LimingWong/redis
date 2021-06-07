@@ -1998,7 +1998,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
-    /* 如果用户请求在BGSAVE执行过程中执行一次aof重写，那么就开始aof重写 */
+    /* 如果之前执行bgrewriteaof命令由于有rdb后台进程而被迫等待，现在如果有机会可以执行。 */
     if (!hasActiveChildProcess() &&
         server.aof_rewrite_scheduled)
     {
@@ -2006,13 +2006,15 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* Check if a background saving or AOF rewrite in progress terminated. */
+    /* 检查一个后台rdb或者aof进程是否退出了 */
     if (hasActiveChildProcess() || ldbPendingChildren())
     {
-        checkChildrenDone();
+        checkChildrenDone();  /* 检查子进程是否退出了，如果退出了，执行一些善后操作。 */
     } else {
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now. */
-         /* 后台如果没有持久化进程，检查我们现在是否应该保存（根据配置文件中的保存频率） */
+        /* 后台如果没有持久化进程，检查我们现在是否应该进行后台rdb或者aof rewrite */
+
         for (j = 0; j < server.saveparamslen; j++) {
             struct saveparam *sp = server.saveparams+j;
 
@@ -2036,6 +2038,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
 
         /* Trigger an AOF rewrite if needed. */
+        /* 触发aof重写 */
         if (server.aof_state == AOF_ON &&
             !hasActiveChildProcess() &&
             server.aof_rewrite_perc &&
@@ -2219,6 +2222,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     trackingBroadcastInvalidationMessages();
 
     /* Write the AOF buffer on disk */
+    /* 将AOF缓存写入硬盘 */
     flushAppendOnlyFile(0);
 
     /* Handle writes with pending output buffers. */
@@ -3435,6 +3439,7 @@ void call(client *c, int flags) {
 
         /* Check if the command operated changes in the data set. If so
          * set for replication / AOF propagation. */
+         /* 命令的执行导致了数据的改变，这样就需要向aof和从机及时通知。 */
         if (dirty) propagate_flags |= (PROPAGATE_AOF|PROPAGATE_REPL);
 
         /* If the client forced AOF / replication of the command, set

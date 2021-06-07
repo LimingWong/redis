@@ -1265,6 +1265,7 @@ long long getExpire(redisDb *db, robj *key) {
  * AOF and the master->slave link guarantee operation ordering, everything
  * will be consistent even if we allow write operations against expiring
  * keys. */
+/* 如果在主机上面有key过期了，那么会给从机和aof文件追加一条DEL命令。 */
 void propagateExpire(redisDb *db, robj *key, int lazy) {
     robj *argv[2];
 
@@ -1274,6 +1275,7 @@ void propagateExpire(redisDb *db, robj *key, int lazy) {
     incrRefCount(argv[1]);
 
     if (server.aof_state != AOF_OFF)
+        /* 如果有过期键，那么在aof中追加一条del命令 */
         feedAppendOnlyFile(server.delCommand,db->id,argv,2);
     replicationFeedSlaves(server.slaves,db->id,argv,2);
 
