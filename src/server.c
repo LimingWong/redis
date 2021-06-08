@@ -3043,6 +3043,7 @@ void initServer(void) {
     aeSetAfterSleepProc(server.el,afterSleep);
 
     /* Open the AOF file if needed. */
+    /* 如果打开了AOF，那么就打开AOF文件 */
     if (server.aof_state == AOF_ON) {
         server.aof_fd = open(server.aof_filename,
                                O_WRONLY|O_APPEND|O_CREAT,0644);
