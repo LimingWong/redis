@@ -161,7 +161,7 @@ void execCommand(client *c) {
     int must_propagate = 0; /* Need to propagate MULTI/EXEC to AOF / slaves? */
     int was_master = server.masterhost == NULL;
 
-    /* 不能在没有执行exec的前提下执行exec */
+    /* 不能在没有执行MULTI的前提下执行exec */
     if (!(c->flags & CLIENT_MULTI)) {
         addReplyError(c,"EXEC without MULTI");
         return;

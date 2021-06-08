@@ -205,6 +205,7 @@ int aofFsyncInProgress(void) {
 
 /* Starts a background task that performs fsync() against the specified
  * file descriptor (the one of the AOF file) in another thread. */
+/* 在另一个线程中，对一个fd(aof文件)执行fsync()操作 */
 void aof_background_fsync(int fd) {
     bioCreateBackgroundJob(BIO_AOF_FSYNC,(void*)(long)fd,NULL,NULL);
 }
