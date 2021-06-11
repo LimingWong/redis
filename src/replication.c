@@ -3147,6 +3147,7 @@ void replicationCron(void) {
     }
 
     /* Check if we should connect to a MASTER */
+    /* 这里真正的开始尝试连接master */
     if (server.repl_state == REPL_STATE_CONNECT) {
         serverLog(LL_NOTICE,"Connecting to MASTER %s:%d",
             server.masterhost, server.masterport);
