@@ -42,7 +42,7 @@
  * 共32个字节
  * 我们使用位字段来使quicklistNode保持32个字节
  * count : 16 bits;记录ziplist有多少个entry;最大为65536，但是实际上小于32k，因为ziplist最大为65k字节，entry的数量至少为一半；
-/* quicklistNode is a 32 byte struct describing a ziplist for a quicklist.
+ * quicklistNode is a 32 byte struct describing a ziplist for a quicklist.
  * We use bit fields keep the quicklistNode at 32 bytes.
  * count: 16 bits, max 65536 (max zl bytes is 65k, so max count actually < 32k).
  * encoding: 2 bits, RAW=1, LZF=2.

@@ -2112,6 +2112,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
 
 /* This handler fires when the non blocking connect was able to
  * establish a connection with the master. */
+/* 只有当非阻塞连接建立之后，这个回调函数才会被执行。*/
 void syncWithMaster(connection *conn) {
     char tmpfile[256], *err = NULL;
     int dfd = -1, maxtries = 5;
@@ -2119,13 +2120,15 @@ void syncWithMaster(connection *conn) {
 
     /* If this event fired after the user turned the instance into a master
      * with SLAVEOF NO ONE we must just return ASAP. */
+    /* 如果在执行SLAVEOF NO ONOE命令之后这个函数被执行了，那么就尽快返回。*/
     if (server.repl_state == REPL_STATE_NONE) {
         connClose(conn);
-        return;
+        return; 
     }
 
     /* Check for errors in the socket: after a non blocking connect() we
      * may find that the socket is in error state. */
+    /* 检查当前连接(server.repl_transfer_s)是不是处于错误状态。*/
     if (connGetState(conn) != CONN_STATE_CONNECTED) {
         serverLog(LL_WARNING,"Error condition on socket for SYNC: %s",
                 connGetLastError(conn));
@@ -2133,15 +2136,21 @@ void syncWithMaster(connection *conn) {
     }
 
     /* Send a PING to check the master is able to reply without errors. */
+    /* 向master发送一个PING，检查连接是否正常。*/
     if (server.repl_state == REPL_STATE_CONNECTING) {
+        /* 能够执行到这里说明连接成功，之前连接的时候注册的写事件被触发了*/
         serverLog(LL_NOTICE,"Non blocking connect for SYNC fired the event.");
         /* Delete the writable event so that the readable event remains
          * registered and we can wait for the PONG reply. */
+        /* 删除掉写事件，注册一个读事件，server.repl_transfer_s->read_handler还是syncWithMaster*/
         connSetReadHandler(conn, syncWithMaster);
         connSetWriteHandler(conn, NULL);
+        /* 状态修改为接受PONG*/
         server.repl_state = REPL_STATE_RECEIVE_PONG;
         /* Send the PING, don't check for errors at all, we have the timeout
          * that will take care about this. */
+        /* 向master同步发送PING命令，这里不检查错误，因为在replicationCron中会检查超时错误。*/
+        /* 这里的写命令是按照同步的形式进行的，最多阻塞5s */
         err = sendSynchronousCommand(SYNC_CMD_WRITE,conn,"PING",NULL);
         if (err) goto write_error;
         return;
@@ -2473,7 +2482,7 @@ int cancelReplicationHandshake(void) {
 
 /* Set replication to the specified master address and port. */
 void replicationSetMaster(char *ip, int port) {
-    int was_master = server.masterhost == NULL;
+    int was_master = server.masterhost == NULL;  /* 当前服务器是不是一个master */
 
     sdsfree(server.masterhost);
     server.masterhost = sdsnew(ip);
@@ -2587,6 +2596,7 @@ void replicationHandleMasterDisconnection(void) {
 void replicaofCommand(client *c) {
     /* SLAVEOF is not allowed in cluster mode as replication is automatically
      * configured using the current address of the master node. */
+    /* 在集群模式下，SLAVEOF是不允许的。 */
     if (server.cluster_enabled) {
         addReplyError(c,"REPLICAOF not allowed in cluster mode.");
         return;
@@ -2594,6 +2604,7 @@ void replicaofCommand(client *c) {
 
     /* The special host/port combination "NO" "ONE" turns the instance
      * into a master. Otherwise the new master address is set. */
+    /* “no” “one” 参数将一个replica转变成一个master；其他参数则设置新的master，本机变成replica */
     if (!strcasecmp(c->argv[1]->ptr,"no") &&
         !strcasecmp(c->argv[2]->ptr,"one")) {
         if (server.masterhost) {
@@ -2608,6 +2619,8 @@ void replicaofCommand(client *c) {
 
         if (c->flags & CLIENT_SLAVE)
         {
+            /* 如果请求执行这个命令的客户端是一个replica，那么不能执行这个命令，因为这个命令
+             * 可能会清除掉所有的replica（包括这个客户端） */
             /* If a client is already a replica they cannot run this command,
              * because it involves flushing all replicas (including this
              * client) */
@@ -2619,6 +2632,7 @@ void replicaofCommand(client *c) {
             return;
 
         /* Check if we are already attached to the specified slave */
+        /* 检查是否已经是这个master的replica 了 */
         if (server.masterhost && !strcasecmp(server.masterhost,c->argv[1]->ptr)
             && server.masterport == port) {
             serverLog(LL_NOTICE,"REPLICAOF would result into synchronization "
@@ -2791,12 +2805,14 @@ void replicationCacheMasterUsingMyself(void) {
 
     /* The master client we create can be set to any DBID, because
      * the new master will start its replication stream with SELECT. */
+    /* 创建master客户端，server.master */
     replicationCreateMasterClient(NULL,-1);
 
     /* Use our own ID / offset. */
     memcpy(server.master->replid, server.replid, sizeof(server.replid));
 
     /* Set as cached master. */
+    /* 设置为缓存master */
     unlinkClient(server.master);
     server.cached_master = server.master;
     server.master = NULL;

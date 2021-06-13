@@ -39,6 +39,9 @@
  * the key). This is why need the following blocking I/O functions.
  *
  * All the functions take the timeout in milliseconds. */
+/* redis大部分的io都是非阻塞的，例外有兩個：
+ * 1. slave執行sync命令使用一種阻塞的方式；
+ * 2. MIGRATE命令執行的時候也必須使用阻塞的方式，這樣就才可以保證原子性。*/
 
 #define SYNCIO__RESOLUTION 10 /* Resolution in milliseconds */
 

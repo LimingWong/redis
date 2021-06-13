@@ -413,7 +413,7 @@ REDIS_STATIC void __quicklistCompress(const quicklist *quicklist,
     } while (0)
 
 /* 如果after=1，将“new_node”添加到“old_node”后面
-/* 如果after=0，将“new_node”添加到“old_node”前面
+ * 如果after=0，将“new_node”添加到“old_node”前面
  * 注意：new_node总是未压缩的，如果我们将它设为头或者尾，我们就不需要压缩它 */
 /* Insert 'new_node' after 'old_node' if 'after' is 1.
  * Insert 'new_node' before 'old_node' if 'after' is 0.
