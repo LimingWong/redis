@@ -1924,6 +1924,7 @@ void commandProcessed(client *c) {
     long long prev_offset = c->reploff;
     if (c->flags & CLIENT_MASTER && !(c->flags & CLIENT_MULTI)) {
         /* Update the applied replication offset of our master. */
+        /* 在这里更新server.master->reploff */
         c->reploff = c->read_reploff - sdslen(c->querybuf) + c->qb_pos;
     }
 
@@ -2133,6 +2134,7 @@ void readQueryFromClient(connection *conn) {
         freeClientAsync(c);
         return;
     } else if (c->flags & CLIENT_MASTER) {
+        /* c是master client（server.master） */
         /* Append the query buffer to the pending (not applied) buffer
          * of the master. We'll use this buffer later in order to have a
          * copy of the string applied by the last command executed. */

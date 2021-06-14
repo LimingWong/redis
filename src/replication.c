@@ -1008,6 +1008,7 @@ void removeRDBUsedToSyncReplicas(void) {
     }
 }
 
+/* master向slave发送rdb数据的回调函数 */
 void sendBulkToSlave(connection *conn) {
     client *slave = connGetPrivateData(conn);
     char buf[PROTO_IOBUF_LEN];
@@ -1685,6 +1686,7 @@ void readSyncBulkPayload(connection *conn) {
 
         /* Put the socket in blocking mode to simplify RDB transfer.
          * We'll restore it when the RDB is received. */
+        /* 将这个connection变为阻塞模式来简化rdb传输；当rdb传输完毕，会再将其恢复为非阻塞状态。 */
         connBlock(conn);
         connRecvTimeout(conn, server.repl_timeout*1000);
         startLoading(server.repl_transfer_size, RDBFLAGS_REPLICATION);
@@ -2018,6 +2020,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
              * replid to make sure next PSYNCs will fail. */
             memset(server.master_replid,0,CONFIG_RUN_ID_SIZE+1);
         } else {
+            /* slave在这里获取master的run id和offset */
             memcpy(server.master_replid, replid, offset-replid-1);
             server.master_replid[CONFIG_RUN_ID_SIZE] = '\0';
             server.master_initial_offset = strtoll(offset,NULL,10);
@@ -2278,6 +2281,10 @@ void syncWithMaster(connection *conn) {
      * PSYNC2: supports PSYNC v2, so understands +CONTINUE <new repl ID>.
      *
      * The master will ignore capabilities it does not understand. */
+    /* 告知master 当前slave所具有的能力：
+     * EOF： 在网络复制过程中支持EOF风格的rdb文件传输
+     * PSYNC2： 支持PSYNC v2, 所以能够理解 +CONTINUE <new repl ID>
+     * 如果master无法理解，就会忽略。*/
     if (server.repl_state == REPL_STATE_SEND_CAPA) {
         err = sendSynchronousCommand(SYNC_CMD_WRITE,conn,"REPLCONF",
                 "capa","eof","capa","psync2",NULL);
@@ -2305,6 +2312,9 @@ void syncWithMaster(connection *conn) {
      * to start a full resynchronization so that we get the master run id
      * and the global offset, to try a partial resync at the next
      * reconnection attempt. */
+    /* 尝试进行部分重同步。
+     * 如果没有缓存的master client， slaveTryPartialResynchronization()会至少尝试使用PSYNC来
+     * 进行完全同步，这样就可以获得master的run id和全局的offset，在下一个重连接的时候就可以尝试部分重同步。*/
     if (server.repl_state == REPL_STATE_SEND_PSYNC) {
         if (slaveTryPartialResynchronization(conn,0) == PSYNC_WRITE_ERROR) {
             err = sdsnew("Write error sending the PSYNC command.");
