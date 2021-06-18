@@ -127,6 +127,7 @@ void createReplicationBacklog(void) {
  * it contains the same data as the previous one (possibly less data, but
  * the most recent bytes, or the same data and more free space in case the
  * buffer is enlarged). */
+/* 这个函数只会在运行时用户修改复制积压缓冲区大小的时候调用。 */
 void resizeReplicationBacklog(long long newsize) {
     if (newsize < CONFIG_REPL_BACKLOG_MIN_SIZE)
         newsize = CONFIG_REPL_BACKLOG_MIN_SIZE;
@@ -149,6 +150,7 @@ void resizeReplicationBacklog(long long newsize) {
 }
 
 void freeReplicationBacklog(void) {
+    /* 只有当没有slave的时候才可以free掉积压缓冲区 */
     serverAssert(listLength(server.slaves) == 0);
     zfree(server.repl_backlog);
     server.repl_backlog = NULL;
@@ -708,12 +710,15 @@ int startBgsaveForReplication(int mincapa) {
 }
 
 /* SYNC and PSYNC command implemenation. */
+/* SYNC和PSYNC命令的实现 */
 void syncCommand(client *c) {
     /* ignore SYNC if already slave or in monitor mode */
+    /* 如果是一个已经是一个slave了或者处于监控模式，拒绝执行 */
     if (c->flags & CLIENT_SLAVE) return;
 
     /* Refuse SYNC requests if we are a slave but the link with our master
      * is not ok... */
+    /* 如果当前是一个slave并且还没有和master建立连接，拒绝。 */
     if (server.masterhost && server.repl_state != REPL_STATE_CONNECTED) {
         addReplySds(c,sdsnew("-NOMASTERLINK Can't SYNC while not connected with my master\r\n"));
         return;
@@ -860,6 +865,7 @@ void syncCommand(client *c) {
  * In the future the same command can be used in order to configure
  * the replication to initiate an incremental replication instead of a
  * full resync. */
+/* 这是在执行SYNC命令之前，slave用来配置复制过程的命令。slave和master建立连接之后就开始进行配置。 */
 void replconfCommand(client *c) {
     int j;
 
